@@ -1126,6 +1126,26 @@ modular_shared_library(
         "@platforms//os:macos": [
             "-Wl,-u,__ZN4mlir6detail22FallbackTypeIDResolver22registerImplicitTypeIDEN4llvm9StringRefE",
         ],
+        # Same symbol, in the MSVC decoration instead of the Itanium one, and it takes
+        # two flags rather than one because Windows splits the job the other two arms
+        # do in a single flag. /INCLUDE pulls the object out of the MLIR static library,
+        # which is what --undefined and -u are doing above. /EXPORT then puts it in the
+        # DLL export table, which on ELF and Mach-O comes free with default visibility
+        # and on Windows never happens unless you ask. The dllexport in
+        # include/Support/SymbolExport.h does not reach this one, because the function
+        # belongs to MLIR rather than to us.
+        #
+        # The name was not written by hand. Namespace back references make that a good
+        # way to produce a name that never matches anything: the mlir in VTypeID@3@ is
+        # a back reference, not a literal, so the obvious guess is wrong. It came out of
+        # compiling the declaration from mlir/include/mlir/Support/TypeID.h for both
+        # targets and reading the undefined symbol back out of each object file. The
+        # Itanium side of that came out byte for byte identical to the Linux arm above,
+        # which is the check that the declaration was reproduced correctly.
+        "@platforms//os:windows": [
+            "/INCLUDE:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
+            "/EXPORT:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
+        ],
     }),
     output_name = "MSupportGlobals",
     deps = [
