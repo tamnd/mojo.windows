@@ -1,0 +1,30 @@
+--- a/util/util.bzl
++++ b/util/util.bzl
+@@ -79,7 +79,9 @@
+ # for our code or the headers we include, so configure the C version inside the
+ # library. If Bazel's C/C++ version handling improves, we may reconsider this.
+ boringssl_copts_c = boringssl_copts_common + select({
+-    "@platforms//os:windows": ["/std:c11"],
++    # -std=c11 and not /std:c11, because this build targets Windows through clang's
++    # GNU driver rather than cl, and the GNU driver reads a leading slash as a path.
++    "@platforms//os:windows": ["-std=c11"],
+     "//conditions:default": ["-std=c11"] + gcc_copts_c,
+ })
+
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -80,9 +80,12 @@
+     includes = ["include"],
+     internal_hdrs = bcm_internal_headers + crypto_internal_headers,
+     linkopts = select({
++        # /defaultlib is an lld-link argument on a linkopts, so it reaches the clang
++        # driver first, which has no idea what -defaultlib means. -Wl, hands it to the
++        # linker, which is the only thing that does.
+         "@platforms//os:windows": [
+-            "-defaultlib:advapi32.lib",
+-            "-defaultlib:ws2_32.lib",
++            "-Wl,/defaultlib:advapi32.lib",
++            "-Wl,/defaultlib:ws2_32.lib",
+         ],
+         "//conditions:default": ["-pthread"],
+     }),
