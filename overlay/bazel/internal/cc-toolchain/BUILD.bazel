@@ -63,20 +63,35 @@ cc_sysroot(
 # something to both halves of the driver. A -L on a compile is an argument clang never
 # reads, and this toolchain builds with -Werror=unused-command-line-argument, so putting
 # all seven on every action turns every compile into three errors about the linker.
-# Clang's own headers are in here with the sysroot's, and first, which is load bearing
-# rather than tidy. The MSVC CRT ships its own xmmintrin.h and immintrin.h, and they
-# define __m128 as a union of arrays, the way cl wants it. Clang's define it as a vector
-# type, and everything clang compiles expects the vector, so LLVM's own libc does
-# ymm[0] on one and gets "type '__m128' (aka 'union __m128') does not provide a
-# subscript operator". Whichever include directory comes first wins, and the sysroot
-# used to.
+# The MSVC and SDK directories go on with -idirafter, and that is the whole point of this
+# target rather than a detail of it. -idirafter searches a directory only once every -I and
+# -isystem and clang's own builtin directory have been exhausted, while still treating it as
+# a system directory so its warnings stay suppressed. That is exactly what clang-cl's -imsvc
+# does, and -imsvc exists because this problem is unavoidable when you compile against
+# Microsoft's headers. The GNU driver rejects -imsvc outright, so we spell it this way.
 #
-# clang-cl solves this with -imsvc, which sorts the MSVC directories after the builtin
-# ones no matter where they appear. The GNU driver has no such flag, it rejects -imsvc
-# outright, so the order has to be written by hand. That is also why these are one
-# cc_args target and not two: split across two targets the order would depend on the
-# order of the list in the cc_toolchain select below, which is a long way from here and
-# reads like it does not matter.
+# Two separate bugs come from getting this order wrong and they look nothing alike.
+#
+# The CRT ships its own xmmintrin.h and immintrin.h defining __m128 as a union of arrays,
+# the way cl wants it, where clang's define it as a vector type. Everything clang compiles
+# expects the vector, so LLVM's own libc writes ymm[0] and gets "type '__m128' (aka 'union
+# __m128') does not provide a subscript operator". That needs the builtin directory ahead
+# of the sysroot.
+#
+# The SDK also ships a share.h, and so does curl, and curl's is the one curl means. A target
+# puts its own include directories on with -isystem, and the toolchain's -isystem entries
+# land on the command line first, so the SDK won and four functions curl declares
+# unconditionally came out undeclared. That needs the sysroot behind every target's own
+# directories, which -isystem cannot express at all and -idirafter does by definition.
+#
+# The second one is the one to hold on to. It is not curl's bug and it is not about curl.
+# The CRT and the SDK between them own a few thousand short generic header names, and under
+# -isystem every one of those is a name a first or third party header cannot safely use.
+#
+# The resource directory entry below is now redundant, since -idirafter puts the sysroot
+# behind the builtin directory whether we name it or not. It stays because it says out loud
+# that clang's headers have to come first, and a line that states a requirement is worth
+# more than a flag saved.
 cc_args(
     name = "windows_sysroot_headers",
     actions = [
@@ -90,13 +105,13 @@ cc_args(
     args = [
         "-isystem",
         "{resource_dir}/include",
-        "-isystem",
+        "-idirafter",
         "{root}/crt/include",
-        "-isystem",
+        "-idirafter",
         "{root}/sdk/include/ucrt",
-        "-isystem",
+        "-idirafter",
         "{root}/sdk/include/um",
-        "-isystem",
+        "-idirafter",
         "{root}/sdk/include/shared",
     ],
     data = [
