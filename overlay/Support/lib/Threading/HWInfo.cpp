@@ -45,21 +45,23 @@
 #include <sched.h>
 #endif
 
-// _WIN32 rather than _MSC_VER, so this also builds under the mingw cross
-// toolchain. The x86 intrinsic headers have no aarch64 form, so they narrow to
-// x86_64 instead of following the wider Windows check.
 #ifdef _WIN32
 // First in this block, and not <windows.h>, on both counts deliberately.
 // iphlpapi.h below needs the Windows types, so something has to pull them in
 // ahead of it, and iphlpapi.h is also the reason the ordering matters: it wants
 // winsock2, and a plain <windows.h> would have given it winsock 1 instead. That
 // is exactly the collision WIN32_LEAN_AND_MEAN in WindowsHeader.h prevents.
+//
+// <cpuid.h> and <intrin.h> used to be here under a MODULAR_X86_64 guard. They
+// are gone because nothing in this file has ever used either one, and because
+// including both at once does not work. cpuid.h defines __cpuid as a five
+// argument macro, intrin.h declares __cpuid as a two argument function, and the
+// macro wins, so intrin.h's own declaration comes out as "too few arguments
+// provided to function-like macro invocation" followed by "variable has
+// incomplete type 'void'". The only cpuid in this file is native_cpuid, which
+// is inline asm and is inside the Linux x86 guard.
 #include "Support/WindowsHeader.h"
 #include "llvm/Support/WindowsError.h"
-#if MODULAR_X86_64
-#include <cpuid.h>
-#include <intrin.h>
-#endif // MODULAR_X86_64
 #include <iphlpapi.h>
 #else
 #include <ifaddrs.h>
