@@ -63,7 +63,14 @@ if [ "$COUNT" -eq 0 ]; then
 fi
 
 info "applying $COUNT patches"
-if ! git am --3way --keep-non-patch "$PATCH_DIR"/*.patch; then
+# The committer identity is forced rather than read from the machine's git config.
+# Every patch carries its own author, so whoever replays the series is not information
+# anybody wants, and on a machine with no global user.name set git am refuses to run at
+# all rather than picking something. That failure is confusing here, because it looks
+# like the series did not apply when in fact it was never tried.
+if ! git -c user.name="mojo.windows sync" \
+        -c user.email="sync@localhost" \
+        am --3way --keep-non-patch "$PATCH_DIR"/*.patch; then
   cat >&2 <<'MSG'
 
 The patch series did not apply cleanly.
