@@ -57,7 +57,9 @@ info "this accepts the Visual Studio licence on this machine, see docs/building.
   splat \
   --output "$OUTPUT"
 
-[ -d "$OUTPUT/crt" ] && [ -d "$OUTPUT/sdk" ] || die "xwin finished but $OUTPUT does not look like a splat output"
+if [ ! -d "$OUTPUT/crt" ] || [ ! -d "$OUTPUT/sdk" ]; then
+  die "xwin finished but $OUTPUT does not look like a splat output"
+fi
 
 info "done"
 printf '\n'
