@@ -29,7 +29,8 @@ jobs:
       fail-fast: false
       matrix:
         # Only what we actually own. Upstream C++ is not vendored here, so there is
-        # nothing to scan for it. Add c-cpp when we start committing our own sources.
+        # nothing to scan for it, and adding c-cpp before we commit our own sources
+        # just fails the run with nothing to analyse. Add it at milestone M1.
         language: [actions, python]
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
