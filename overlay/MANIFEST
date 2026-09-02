@@ -35,8 +35,10 @@ edit	586cd6589ac54d9adfa57362c41dc733abe08071	bazel/config.bzl
 edit	dc4d8098c3daecda2047b418956f8994cedd95ac	bazel/internal/BUILD.bazel
 edit	a91387bbbd00ab37c6ab446ba5ece42de45e3042	bazel/internal/cc-toolchain/BUILD.bazel
 edit	d6ec74a790ce4357a3ed2352d2f55252339e8c0a	bazel/internal/cc-toolchain/args/BUILD.bazel
+edit	a08eade47742024216745d2a83a677f4590ee48b	bazel/internal/cc-toolchain/args/interface-libraries/BUILD.bazel
 edit	e32d05dbfeb2fb90cf87d1a231f32f84b92e52cb	bazel/internal/cc-toolchain/args/modular/BUILD.bazel
 edit	97703532c465ffe3d7b8ab8f20ed36c2a84c53d9	bazel/internal/cc-toolchain/tools/BUILD.bazel
+edit	bbd8b61acf0020064c89e9eb1280984530b887e0	bazel/internal/cc-toolchain/tools/linker-driver.sh
 new	-	bazel/internal/cc-toolchain/windows_sysroot_repository.bzl
 edit	edb67a035194ce0b99f28058a68828d923170991	bazel/internal/config.bzl
 edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.bazel
