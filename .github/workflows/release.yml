@@ -1,6 +1,6 @@
 name: Release
 
-# Until M5 there are no binaries, so a release is the patch series plus the documents,
+# Until M5 there are no binaries, so a release is the overlay plus the documents,
 # which is genuinely the useful artifact right now. The provenance attestation and the
 # checksums are wired up from the start so that the first binary release does not have
 # to invent them under time pressure.
