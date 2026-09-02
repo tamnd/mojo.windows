@@ -1,5 +1,5 @@
 {
-  "$comment": "Pinned upstream. Everything in patches/ is written against exactly this commit. Do not edit by hand, use scripts/bump-upstream.sh.",
+  "$comment": "Pinned upstream. Everything in overlay/ is written against exactly this commit. Do not edit by hand, use scripts/bump-upstream.sh.",
   "repo": "https://github.com/modular/modular.git",
   "ref": "9aba62be844d73b574a4283a1a8ce760f9843134",
   "tag": "modular/v25.7.0-29742-g9aba62be84",

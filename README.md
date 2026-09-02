@@ -1,8 +1,8 @@
 # mojo.windows
 
-Native Windows support for the Mojo compiler and standard library, maintained as a pinned patch series on top of upstream `modular/modular`.
+Native Windows support for the Mojo compiler and standard library, maintained as a pinned commit plus a file overlay on top of upstream `modular/modular`.
 
-> **Not affiliated with Modular or Qualcomm.** This is an unofficial community project. "Mojo" is a trademark of Modular Inc. and is used here only to say what this project patches. Do not file Windows bugs from this project on the upstream tracker.
+> **Not affiliated with Modular or Qualcomm.** This is an unofficial community project. "Mojo" is a trademark of Modular Inc. and is used here only to say what this project changes. Do not file Windows bugs from this project on the upstream tracker.
 
 ## Status
 
@@ -12,9 +12,9 @@ Track progress on the [milestones](https://github.com/tamnd/mojo.windows/milesto
 
 ## Why this exists
 
-Mojo was open sourced in August 2026 under Apache 2.0 with LLVM Exceptions, which makes the compiler modifiable for the first time. Modular has announced a partnership with Microsoft for Windows support but has not published a date or a design, and is not currently taking compiler pull requests from outside. So the only way to get Mojo running on Windows right now is to patch it yourself.
+Mojo was open sourced in August 2026 under Apache 2.0 with LLVM Exceptions, which makes the compiler modifiable for the first time. Modular has announced a partnership with Microsoft for Windows support but has not published a date or a design. So the only way to get Mojo running on Windows right now is to change it yourself.
 
-This project is meant to become unnecessary. Every patch is written in a shape that could be handed to upstream as is, so that when Modular opens the compiler up, the work converts into contributions instead of being thrown away.
+This project is meant to become unnecessary. When Modular and Microsoft ship official Windows support, the right ending is to archive this and point people at theirs. Nothing here is submitted upstream, and #35 says why.
 
 ## What we found
 
@@ -34,21 +34,21 @@ Five things came out of the source audit that shape the whole plan. The detail i
 
 There is no GitHub fork. A fork of a repository this size would drag in a million lines we do not touch, inherit six upstream workflows we do not want firing, and make it hard to tell our changes apart from theirs.
 
-Instead this repository holds three things: a pinned upstream commit in [`upstream.lock`](upstream.lock), a series of `git format-patch` files in [`patches/`](patches/), and the scripts that put them together. Upstream source is never committed here.
+Instead this repository holds three things: a pinned upstream commit in [`upstream.lock`](upstream.lock), the files we change in [`overlay/`](overlay/), and the scripts that put them together. Only files this project has actually changed are committed here, and the overlay is currently about 130 kilobytes.
 
 ```sh
 ./scripts/sync.sh
 ```
 
-That clones upstream at the pinned commit into `.upstream/modular`, which is gitignored, and applies the series on top. You get a normal git working tree you can build and hack on.
+That clones upstream at the pinned commit into `.upstream/modular`, which is gitignored, and lays the overlay on top. You get a normal git working tree you can build and hack on.
 
-To make a change, commit it inside `.upstream/modular` and run:
+To make a change, edit the file in `.upstream/modular` like ordinary source, then run:
 
 ```sh
 ./scripts/refresh.sh
 ```
 
-That exports your commits back into `patches/`. One logical change per commit, with a real subject line, because the subject line is the filename and it is the first thing an upstream reviewer would read.
+That copies everything differing from the pin back into `overlay/`. You do not have to say which files you touched, so taking over a file nobody has changed before is just editing it.
 
 To move to a newer upstream release:
 
@@ -56,7 +56,7 @@ To move to a newer upstream release:
 ./scripts/bump-upstream.sh
 ```
 
-That replays the series onto the newest upstream tag. If everything applies it updates the lock and the patches. If something conflicts it changes nothing and tells you which patch broke. A scheduled workflow runs this every week and opens a pull request when a bump is clean, or files an issue when it is not, so drift shows up as a notification rather than as a surprise six months later.
+That does a three way merge of every overlay file onto the newer upstream, using upstream's version at the old pin as the base. If everything merges it updates the lock and the overlay. If something conflicts it changes nothing and leaves the conflict markers in the file for you. A scheduled workflow runs this every week and opens a pull request when a bump is clean, or files an issue when it is not, so drift shows up as a notification rather than as a surprise six months later.
 
 The full explanation, including why this shape over a fork, a submodule or a subtree, is in [docs/upstream.md](docs/upstream.md).
 
@@ -66,13 +66,13 @@ The full explanation, including why this shape over a fork, a submodule or a sub
 | --- | --- |
 | [docs/overview.md](docs/overview.md) | Scope, what is missing, how the work is grouped |
 | [docs/abi.md](docs/abi.md) | The Win64 calling convention gap and the conformance suite |
-| [docs/upstream.md](docs/upstream.md) | Pinning, the patch series, rebasing, upstreaming |
+| [docs/upstream.md](docs/upstream.md) | Pinning, the overlay, rebasing onto a newer upstream |
 | [docs/building.md](docs/building.md) | Cross compiling from Linux, toolchain and sysroot |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones M0 to M8 and rough effort |
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) first. The short version is that every patch has to keep the Linux and macOS test suites green, because a patch that regresses the platforms Modular actually ships is a patch that can never go upstream.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first. The short version is that every change has to keep the Linux and macOS test suites green. Linux is the baseline we develop against and the only thing that tells us a Windows change broke something general rather than something Windows specific, so a change that regresses it is a change we cannot evaluate.
 
 Good places to start are the issues labelled [good first issue](https://github.com/tamnd/mojo.windows/labels/good%20first%20issue).
 

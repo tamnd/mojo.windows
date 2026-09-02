@@ -8,7 +8,7 @@ Nothing here produces a Windows binary yet. This document describes the approach
 ./scripts/sync.sh
 ```
 
-Upstream lands in `.upstream/modular` at the pinned commit with our series applied. Build from there. The first clone is large and slow, everything after that is not.
+Upstream lands in `.upstream/modular` at the pinned commit with our overlay applied. Build from there. The first clone is large and slow, everything after that is not.
 
 Always use `./bazelw` from inside that checkout rather than a system Bazel or a release tarball. The `tools/bazel` wrapper generates `build/wrapper.bazelrc` on every invocation, and `.bazelrc` imports it, so a tree where that wrapper has never run fails with a confusing message about a nonexistent path in an import declaration.
 
@@ -16,7 +16,7 @@ You also have to pass one of `--config=build-mojo` or `--config=prebuilt-mojo`. 
 
 ## Say who built it
 
-Every binary produced here has to identify itself as not being a Modular build. The first patch in the series adds three Bazel settings for that, `//:downstream_id`, `//:downstream_build` and `//:downstream_upstream_commit`, all empty by default. Empty means the binary claims to be an ordinary Modular build, which for anything built here would be untrue, so pass them on every build:
+Every binary produced here has to identify itself as not being a Modular build. The overlay adds three Bazel settings for that, `//:downstream_id`, `//:downstream_build` and `//:downstream_upstream_commit`, all empty by default. Empty means the binary claims to be an ordinary Modular build, which for anything built here would be untrue, so pass them on every build:
 
 ```sh
 cd .upstream/modular
