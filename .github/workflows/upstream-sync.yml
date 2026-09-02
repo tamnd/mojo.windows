@@ -106,22 +106,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ steps.bump.outputs.before }}
+          # Passed through the environment rather than interpolated straight into the
+          # script, which is the standard way to keep workflow expressions out of shell.
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title="Upstream drift: the patch series no longer applies"
-          body="$(
-            printf 'The scheduled bump from `%s` failed. The pin has not been changed.\n\n' "$BEFORE"
-            printf 'Last 40 lines of the attempt:\n\n```\n'
-            tail -n 40 bump.log
-            printf '\n```\n\nTo work it out locally:\n\n```sh\n./scripts/bump-upstream.sh\n```\n\n'
-            printf 'This issue is updated in place rather than reopened, so a month of failed\n'
-            printf 'bumps stays one notification. Run: %s\n' "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          )"
+          python3 scripts/drift-body.py "$BEFORE" "$RUN_URL" bump.log > drift-body.md
 
           existing="$(gh issue list --label upstream-drift --state open --limit 1 --json number --jq '.[0].number')"
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "$body"
+            gh issue comment "$existing" --body-file drift-body.md
           else
-            gh issue create --title "$title" --body "$body" \
+            gh issue create --title "$title" --body-file drift-body.md \
               --label upstream-drift --label area/upstream --label priority/p1
           fi
 
