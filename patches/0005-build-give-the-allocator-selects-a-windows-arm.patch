@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tamnd <tamnd@users.noreply.github.com>
+Date: Wed, 2 Sep 2026 22:55:25 +0800
+Subject: build: give the allocator selects a windows arm
+
+`//bazel/internal:tcmalloc_numa_aware` and `:tcmalloc_want_numa_aware` are
+`select()`s over Linux and macOS with no other arms, and AsyncRT depends on both
+unconditionally, so they are two of the first analysis failures on the way to any
+Windows target.
+
+Neither allocator is portable here. tcmalloc as patched in this tree wants glibc
+restartable sequences and reads NUMA topology out of sysfs, both from patches
+carried in `bazel/public-patches`, and there is no upstream Windows port to fall
+back to. gperftools, which is what the macOS arm uses, has no Windows build in
+the prebuilt archive this tree fetches either.
+
+So point both arms at `:empty_lib` and let the platform allocator do the work.
+That is a real performance loss and not a papering over, so the comment says
+which two Linux specific things stand in the way rather than just noting that it
+is unsupported. The macOS arm of `tcmalloc_want_numa_aware` already resolves to
+`:empty_lib` for the same shape of reason, so this follows a pattern that is
+already here.
+
+Signed-off-by: tamnd <1218621+tamnd@users.noreply.github.com>
+---
+ bazel/internal/BUILD.bazel | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/bazel/internal/BUILD.bazel b/bazel/internal/BUILD.bazel
+index dc4d8098c3..55711faf6e 100644
+--- a/bazel/internal/BUILD.bazel
++++ b/bazel/internal/BUILD.bazel
+@@ -232,6 +232,11 @@ alias(
+         "@platforms//os:macos": "@gperftools-macos//:tcmalloc",
+         # NOTE: This library doesn't override new/free globally, which the default library does
+         "@platforms//os:linux": "@tcmalloc//tcmalloc:tcmalloc_internal_methods_only_numa_aware",
++        # Neither allocator builds here. tcmalloc as patched in this tree needs glibc
++        # restartable sequences and reads NUMA topology out of sysfs, and gperftools
++        # has no Windows build either. Fall back to the system allocator, which is
++        # correct but slower, until a replacement lands.
++        "@platforms//os:windows": ":empty_lib",
+     }),
+ )
+ 
+@@ -243,6 +248,8 @@ alias(
+     actual = select({
+         "@platforms//os:macos": ":empty_lib",
+         "@platforms//os:linux": "@tcmalloc//tcmalloc:want_numa_aware",
++        # Nothing to turn on when there is no tcmalloc to turn it on in.
++        "@platforms//os:windows": ":empty_lib",
+     }),
+ )
+ 
