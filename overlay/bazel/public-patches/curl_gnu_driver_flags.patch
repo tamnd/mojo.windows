@@ -1,0 +1,51 @@
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -289,15 +289,19 @@
+         ]),
+         hdrs = glob(["include/curl/*.h"]),
+         copts = select({
++            # -D and not /D. This build reaches Windows through clang's GNU driver
++            # rather than cl, and the GNU driver reads a leading slash as a path, so
++            # every one of these came back as "no such file or directory". The set of
++            # defines is right, it is only the spelling that assumed cl.
+             "@platforms//os:windows": [
+-                "/DBUILDING_LIBCURL",
+-                "/DCURL_DISABLE_LDAP",
+-                "/DUSE_IPV6",
+-                "/DUSE_SCHANNEL",
+-                "/DUSE_WIN32_IDN",
+-                "/DUSE_WINDOWS_SSPI",
+-                "/DWANT_IDN_PROTOTYPES",
+-                "/DWIN32",
++                "-DBUILDING_LIBCURL",
++                "-DCURL_DISABLE_LDAP",
++                "-DUSE_IPV6",
++                "-DUSE_SCHANNEL",
++                "-DUSE_WIN32_IDN",
++                "-DUSE_WINDOWS_SSPI",
++                "-DWANT_IDN_PROTOTYPES",
++                "-DWIN32",
+             ],
+             "@platforms//os:macos": _BASE_CURL_COPTS,
+             "//conditions:default": _BASE_CURL_COPTS + [
+@@ -322,11 +326,16 @@
+             ],
+             "//conditions:default": [],
+         }) + select({
++            # -Wl, is doing real work here. /DEFAULTLIB is a linker argument, and on
++            # a linkopts it reaches the clang driver first, which reads the old
++            # spelling as -D EFAULTLIB:ws2_32.lib and defines a macro nobody named.
++            # No error, no library, and the failure turns up much later as a missing
++            # symbol. -Wl, hands it to lld-link, which knows what it means.
+             "@platforms//os:windows": [
+-                "-DEFAULTLIB:ws2_32.lib",
+-                "-DEFAULTLIB:advapi32.lib",
+-                "-DEFAULTLIB:crypt32.lib",
+-                "-DEFAULTLIB:Normaliz.lib",
++                "-Wl,/DEFAULTLIB:ws2_32.lib",
++                "-Wl,/DEFAULTLIB:advapi32.lib",
++                "-Wl,/DEFAULTLIB:crypt32.lib",
++                "-Wl,/DEFAULTLIB:Normaliz.lib",
+             ],
+             "@platforms//os:macos": [
+                 "-Wl,-framework,SystemConfiguration",
