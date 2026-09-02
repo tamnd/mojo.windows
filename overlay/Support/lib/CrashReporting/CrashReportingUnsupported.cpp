@@ -11,21 +11,24 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 //
-// CrashReporting for targets where Crashpad is not built.
+// CrashReporting for targets that have no Crashpad to link against.
 //
-// Crashpad itself supports Windows, and the sources for it are in the archive
-// this project already fetches.  What is missing is the BUILD file work, since
-// the one we get wires up Linux and macOS and explicitly leaves out compat/win.
+// Crashpad itself supports Windows, and the sources are in the archive this
+// project already fetches.  What is missing is the BUILD file work, since the
+// one we get wires up Linux and macOS and explicitly leaves out compat/win.
 // That is a real job and it is not this one.  Until it is done, a Windows build
 // takes these definitions instead, which lets everything that calls into crash
 // reporting keep compiling and linking without any of it being conditional at
 // the call site.
 //
-// Nothing here reports a crash.  It is the honest behaviour for a target that
-// has no handler to report to, and it stays that way only until the handler is
-// wired up, at which point this file goes away rather than growing.
+// This file and CrashReporting.cpp carry opposite guards, so exactly one of the
+// two is ever live.  Nothing here reports a crash.  That is the honest behaviour
+// for a target with no handler to report to, and it lasts only until the handler
+// is wired up, at which point this file goes away rather than growing.
 //
 //===----------------------------------------------------------------------===//
+
+#ifdef _WIN32
 
 #include "Support/CrashReporting/CrashReporting.h"
 
@@ -56,3 +59,5 @@ void M::initCrashpadForProgram(StringRef, StringRef, StringRef, Config *) {
 void M::generateNonFatalDump() {
   // Nothing to dump to.
 }
+
+#endif // _WIN32

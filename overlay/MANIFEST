@@ -17,7 +17,8 @@ edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 edit	9958fb19c8e9b86a4636b088a591b381170417fe	Mojo/tools/mojo/DriverOptions.td
 edit	e3376e74de03f0d0b2b99e312639ba548d060ec7	Mojo/tools/mojo/mojo.cpp
 edit	ed0961200dc215798abd226500fb6652adab461c	Support/BUILD.bazel
-new	-	Support/lib/CrashReporting/unsupported/CrashReporting.cpp
+edit	522cca99a76aed3c491be40b8118214dc2305171	Support/lib/CrashReporting/CrashReporting.cpp
+new	-	Support/lib/CrashReporting/CrashReportingUnsupported.cpp
 edit	89d6d145bfd81c68ccc082d95bcede0896d545da	bazel/api.bzl
 edit	774a4f8fe6035ef5b580ca83876cc3828ee239a4	bazel/common.MODULE.bazel
 edit	586cd6589ac54d9adfa57362c41dc733abe08071	bazel/config.bzl
