@@ -44,7 +44,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ec"
           curl -fsSL https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v3.3.0/ec-linux-amd64.tar.gz \
             | tar xz -C "$RUNNER_TEMP/ec"
-          "$RUNNER_TEMP/ec/bin/ec-linux-amd64" -exclude '^(LICENSE|patches/.*\.patch)$'
+          "$RUNNER_TEMP/ec/bin/ec-linux-amd64" -exclude '^(LICENSE|overlay/.*)$'
 
   house-style:
     name: House style
@@ -91,8 +91,8 @@ jobs:
           done < <(git ls-files '*.md' 'docs/*' '.github/**')
           exit $bad
 
-  patches:
-    name: Patch series
+  overlay:
+    name: Overlay
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -107,8 +107,8 @@ jobs:
           key: upstream-${{ hashFiles('upstream.lock') }}
           restore-keys: upstream-
 
-      - name: Check the series is well formed and still applies
-        run: ./scripts/check-patches.sh
+      - name: Check the overlay is well formed and still lines up with the pin
+        run: ./scripts/check-overlay.sh
         env:
           GIT_COMMITTER_NAME: ci
           GIT_COMMITTER_EMAIL: ci@localhost

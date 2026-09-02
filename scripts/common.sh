@@ -8,7 +8,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCK_FILE="$REPO_ROOT/upstream.lock"
-PATCH_DIR="$REPO_ROOT/patches"
+OVERLAY_DIR="$REPO_ROOT/overlay"
+MANIFEST="$OVERLAY_DIR/MANIFEST"
 WORK_DIR="${MOJO_WIN_WORKDIR:-$REPO_ROOT/.upstream}"
 CHECKOUT="$WORK_DIR/modular"
 
@@ -33,9 +34,35 @@ upstream_tag() { lock_get tag; }
 # Branch we build on top of. Named after the pinned tag so two pins can coexist.
 work_branch() { printf 'windows/%s\n' "$(upstream_tag | tr '/' '-')"; }
 
-patch_count() {
-  find "$PATCH_DIR" -maxdepth 1 -name '*.patch' -type f 2>/dev/null | wc -l | tr -d ' '
+# The overlay manifest. One line per file we take ownership of, three fields:
+#
+#   <state>  <upstream blob>  <path relative to the upstream tree root>
+#
+# state is edit, new or delete. The blob is what upstream had at the pin, and is a dash
+# for new files. Blank lines and everything after a # are ignored.
+#
+# The blob is the whole point of the file. Without it a rebase to a newer pin silently
+# reverts whatever upstream did to a file we also changed, and nothing tells you. With it,
+# sync.sh compares and says which of our files upstream has moved under us.
+
+manifest_rows() {
+  [ -f "$MANIFEST" ] || return 0
+  # shellcheck disable=SC2016
+  python3 - "$MANIFEST" <<'PY'
+import sys
+for raw in open(sys.argv[1], encoding="utf-8"):
+    line = raw.split("#", 1)[0].strip()
+    if not line:
+        continue
+    parts = line.split()
+    if len(parts) != 3:
+        sys.exit("error: bad manifest line: %s" % raw.rstrip())
+    print("\t".join(parts))
+PY
 }
+
+overlay_paths() { manifest_rows | cut -f3; }
+overlay_count() { overlay_paths | grep -c . || true; }
 
 # Paths that have to exist in any commit we are willing to pin to. The compiler was open
 # sourced after the mojo/v1.0.0 tag, so there are real upstream refs whose tree holds the

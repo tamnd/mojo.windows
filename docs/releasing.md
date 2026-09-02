@@ -2,7 +2,7 @@
 
 ## What a version number means here
 
-This project does not ship a product with its own feature set. It ships a patch series against a pinned upstream Mojo, so a version number needs to answer one question: how far through the roadmap is this. The scheme is built around the milestones rather than around semver's usual promises about API compatibility.
+This project does not ship a product with its own feature set. It ships a set of changed files against a pinned upstream Mojo, so a version number needs to answer one question: how far through the roadmap is this. The scheme is built around the milestones rather than around semver's usual promises about API compatibility.
 
 The rule is that `v0.x.0` marks the completion of milestone `Mx`, and `v0.x.y` for `y` greater than zero marks incremental progress made while working toward `M(x+1)`.
 
@@ -26,7 +26,7 @@ There is deliberately no `v1.0.0`. Version 1 of Mojo on Windows is Modular's to 
 
 ## Patch releases
 
-Cut one after a batch of pull requests has landed and the series still applies cleanly. There is no fixed cadence and no minimum number of pull requests. The test is whether somebody tracking the project would find the tag useful, which usually means a few related patches finishing something nameable rather than one patch on its own.
+Cut one after a batch of pull requests has landed and the overlay still applies cleanly. There is no fixed cadence and no minimum number of pull requests. The test is whether somebody tracking the project would find the tag useful, which usually means a few related changes finishing something nameable rather than one change on its own.
 
 Do not cut one when the only change is documentation or CI. Those land on `main` and get picked up by the next real release.
 
@@ -36,9 +36,9 @@ Cut one when every issue in a milestone is closed and the milestone tracking iss
 
 ## What is in a release
 
-Until M5 there are no binaries. A release is the patch series plus the pin, so the artifact is the source tarball that GitHub generates automatically plus the release notes. From M5 there is a zip with checksums and build provenance, which is issue #27.
+Until M5 there are no binaries. A release is the overlay plus the pin, so the artifact is the source tarball that GitHub generates automatically plus the release notes. From M5 there is a zip with checksums and build provenance, which is issue #27.
 
-The point of tagging before there are binaries is that `upstream.lock` plus `patches/` at a tag is a complete and reproducible description of a tree. Anybody can check out the tag, run `./scripts/sync.sh` and get exactly what we had.
+The point of tagging before there are binaries is that `upstream.lock` plus `overlay/` at a tag is a complete and reproducible description of a tree. Anybody can check out the tag, run `./scripts/sync.sh` and get exactly what we had.
 
 ## Cutting one
 
