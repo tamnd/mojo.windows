@@ -245,6 +245,9 @@ modular_cc_library(
         "include/Support/Context.h",
         "include/Support/ContextGlobal.h",
     ],
+    # Context.cpp defines the members Context.h declares with MODULAR_CXX_EXPORT,
+    # so this target is a definer too. Same reasoning as Globals below.
+    local_defines = ["MODULAR_BUILDING_LIBRARY"],
     deps = [
         ":ADT",
         ":Base",
@@ -1194,13 +1197,38 @@ modular_shared_library(
             "-Wl,/EXPORT:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
         ],
     }),
+    # This is the "missing define conditionals for symbol visibility" the note at
+    # the bottom of this target used to describe, so the note is gone and this is
+    # here instead.
+    #
+    # include/Support/SymbolExport.h turns MODULAR_CXX_EXPORT into dllexport when
+    # MODULAR_BUILDING_LIBRARY is defined and dllimport when it is not. Nothing
+    # defined it anywhere, so every translation unit got dllimport, including the
+    # ones holding the definitions. On ELF and Mach-O that costs nothing, because
+    # both arms of the macro come out as default visibility there. On Windows the
+    # two arms mean opposite things.
+    #
+    # It has to be local_defines rather than defines. The point of the macro is to
+    # tell the target that defines a symbol apart from the targets that use it, and
+    # defines would propagate to the users and defeat that.
+    #
+    # Without it this target still linked, because clang takes a definition that
+    # follows a dllimport declaration, adds dllexport, and warns:
+    #
+    #   warning: 'M::Context::~Context' redeclared without 'dllimport' attribute:
+    #   'dllexport' attribute added [-Winconsistent-dllimport]
+    #
+    # That is why MSupportGlobals.dll had the right exports before this change. It
+    # only breaks when the macro is on the definition itself rather than on an
+    # earlier declaration, which is LogFFI.cpp above, where it is an error instead.
+    # Relying on the warning was never the plan, so both are fixed the same way.
+    local_defines = ["MODULAR_BUILDING_LIBRARY"],
     output_name = "MSupportGlobals",
     deps = [
         ":SymbolExport",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",
     ],
-    # TODO: Missing define conditionals for symbol visibility
     # NOTE: This library should not have any deps to avoid shared object linking issues
 )
 
@@ -1241,6 +1269,10 @@ modular_cc_library(
     name = "LogFFI",
     srcs = ["lib/LogFFI.cpp"],
     hdrs = ["include/Support/LogFFI.h"],
+    # This is the target that defines the MLog_ entry points, so it is the one
+    # that has to say so. See the comment on the same define in Globals below for
+    # what the macro does and why every defining target needs its own.
+    local_defines = ["MODULAR_BUILDING_LIBRARY"],
     deps = [
         ":Log",
         ":SymbolExport",
