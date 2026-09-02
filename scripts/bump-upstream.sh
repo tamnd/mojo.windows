@@ -131,8 +131,8 @@ if [ "$COUNT" -gt 0 ]; then
     git cat-file blob "$base_blob" > "$tmp/$path.base"
     git cat-file blob "$new_blob" > "$tmp/$path.theirs"
     if git merge-file \
-         -L "ours (mojo.windows)" -L "upstream at $OLD_TAG" -L "upstream at $NEW_TAG" \
-         "$OVERLAY_DIR/$path" "$tmp/$path.base" "$tmp/$path.theirs"; then
+      -L "ours (mojo.windows)" -L "upstream at $OLD_TAG" -L "upstream at $NEW_TAG" \
+      "$OVERLAY_DIR/$path" "$tmp/$path.base" "$tmp/$path.theirs"; then
       merged=$((merged + 1))
     else
       conflicts+=("$path")
