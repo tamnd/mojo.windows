@@ -1,0 +1,130 @@
+name: Upstream sync
+
+# Keeps the pin moving. The whole point of pinning rather than forking is that drift
+# becomes a scheduled, visible event instead of something you discover six months later.
+#
+# Clean bump  -> opens a pull request.
+# Conflict    -> opens or updates one tracking issue, and changes nothing else.
+
+on:
+  schedule:
+    # Mondays, 06:00 UTC. Early enough in the week that a broken bump gets looked at.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Upstream tag to pin to. Leave empty for the newest mojo/v* release.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Replay the series onto newer upstream
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Cache the upstream checkout
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .upstream
+          key: upstream-sync-${{ github.run_id }}
+          restore-keys: upstream-
+
+      - name: Attempt the bump
+        id: bump
+        env:
+          TARGET_TAG: ${{ inputs.tag }}
+          GIT_AUTHOR_NAME: upstream-sync
+          GIT_AUTHOR_EMAIL: upstream-sync@users.noreply.github.com
+          GIT_COMMITTER_NAME: upstream-sync
+          GIT_COMMITTER_EMAIL: upstream-sync@users.noreply.github.com
+        run: |
+          set -o pipefail
+          before="$(python3 -c 'import json;print(json.load(open("upstream.lock"))["tag"])')"
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+
+          if ./scripts/bump-upstream.sh ${TARGET_TAG:+"$TARGET_TAG"} 2>&1 | tee bump.log; then
+            after="$(python3 -c 'import json;print(json.load(open("upstream.lock"))["tag"])')"
+            echo "after=$after" >> "$GITHUB_OUTPUT"
+            if [ "$before" = "$after" ]; then
+              echo "result=nochange" >> "$GITHUB_OUTPUT"
+            else
+              echo "result=ok" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open a pull request
+        if: steps.bump.outputs.result == 'ok'
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          branch: upstream-sync/${{ steps.bump.outputs.after }}
+          base: main
+          commit-message: |
+            build: bump upstream pin to ${{ steps.bump.outputs.after }}
+
+            Replayed the patch series onto ${{ steps.bump.outputs.after }}. Everything
+            applied cleanly, so this only touches upstream.lock and any patch files
+            whose context shifted.
+          title: 'build: bump upstream pin to ${{ steps.bump.outputs.after }}'
+          labels: |
+            area/upstream
+            type/chore
+          delete-branch: true
+          add-paths: |
+            upstream.lock
+            patches
+          body: |
+            Automated bump from `${{ steps.bump.outputs.before }}` to `${{ steps.bump.outputs.after }}`.
+
+            The whole patch series replayed cleanly, so the only changes here are the pin
+            itself and any patches whose context lines moved.
+
+            Before merging, check that the diff to `patches/` is context shift only. If a
+            patch has changed in substance, upstream reworked the code underneath it and
+            it is worth reading properly rather than trusting the three way merge.
+
+            Note that pull requests opened by the workflow token do not themselves start
+            CI runs. Close and reopen this one, or push an empty commit, to get a result.
+
+      - name: File or update the drift issue
+        if: steps.bump.outputs.result == 'conflict'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ steps.bump.outputs.before }}
+        run: |
+          title="Upstream drift: the patch series no longer applies"
+          body="$(
+            printf 'The scheduled bump from `%s` failed. The pin has not been changed.\n\n' "$BEFORE"
+            printf 'Last 40 lines of the attempt:\n\n```\n'
+            tail -n 40 bump.log
+            printf '\n```\n\nTo work it out locally:\n\n```sh\n./scripts/bump-upstream.sh\n```\n\n'
+            printf 'This issue is updated in place rather than reopened, so a month of failed\n'
+            printf 'bumps stays one notification. Run: %s\n' "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          )"
+
+          existing="$(gh issue list --label upstream-drift --state open --limit 1 --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body" \
+              --label upstream-drift --label area/upstream --label priority/p1
+          fi
+
+      - name: Nothing to do
+        if: steps.bump.outputs.result == 'nochange'
+        run: echo "Already on the newest upstream release tag."

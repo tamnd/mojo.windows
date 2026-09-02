@@ -1,0 +1,53 @@
+name: Work item
+description: A piece of the port that needs doing.
+title: '[area] short description'
+labels: ['type/task']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What needs doing
+      description: One or two sentences. Assume the reader has read the docs.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >
+        File paths and quoted code from upstream. Line numbers drift, so quote the code
+        rather than relying on the number.
+      placeholder: |
+        Mojo/lib/KGENToLLVM/CABILowering.cpp
+
+            case llvm::Triple::x86_64:
+              return std::make_unique<SystemVABIInfo>(ctx, dataLayout);
+    validations:
+      required: false
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: How we know this is finished. Be concrete, not aspirational.
+    validations:
+      required: true
+  - type: dropdown
+    id: fails
+    attributes:
+      label: How does it fail today
+      options:
+        - Loudly, it does not build
+        - Loudly, it builds but errors at runtime
+        - Silently, it produces wrong behaviour
+        - It does not fail yet, this is new work
+    validations:
+      required: true
+  - type: textarea
+    id: upstream
+    attributes:
+      label: Can this go upstream as is
+      description: >
+        Standard library changes and pure portability refactors can be offered to Modular
+        today. Compiler changes get banked. Say which this is and why.
+    validations:
+      required: false
