@@ -36,3 +36,32 @@ work_branch() { printf 'windows/%s\n' "$(upstream_tag | tr '/' '-')"; }
 patch_count() {
   find "$PATCH_DIR" -maxdepth 1 -name '*.patch' -type f 2>/dev/null | wc -l | tr -d ' '
 }
+
+# Paths that have to exist in any commit we are willing to pin to. The compiler was open
+# sourced after the mojo/v1.0.0 tag, so there are real upstream refs whose tree holds the
+# standard library and nothing else. Pinning to one of those looks fine right up until
+# every patch fails to apply against files that are not there, which is a confusing way
+# to spend an afternoon. Checked at bump time so it can never happen twice.
+REQUIRED_UPSTREAM_PATHS=(
+  "Support/BUILD.bazel"
+  "Mojo/lib/KGENToLLVM/CABILowering.cpp"
+  "Mojo/tools/mojo/Build/mojo-build.cpp"
+  "Mojo/stdlib"
+)
+
+assert_pinnable() {
+  # Usage: assert_pinnable <commit>. Must be run inside the upstream checkout.
+  local commit="$1" missing=()
+  local p
+  for p in "${REQUIRED_UPSTREAM_PATHS[@]}"; do
+    git cat-file -e "$commit:$p" 2>/dev/null || missing+=("$p")
+  done
+  if [ "${#missing[@]}" -gt 0 ]; then
+    printf 'error: %s does not look like a tree this project can patch.\n' "$commit" >&2
+    printf 'Missing from it:\n' >&2
+    printf '  %s\n' "${missing[@]}" >&2
+    printf '\nThe most likely cause is pinning to a release tag older than the compiler\n' >&2
+    printf 'open sourcing. mojo/v1.0.0 is one of those. Pin to a main commit instead.\n' >&2
+    exit 1
+  fi
+}

@@ -57,16 +57,28 @@ There is also a real risk that the series rots if nobody looks at it. That is wh
 
 ## Staying current
 
-`.github/workflows/upstream-sync.yml` runs every Monday and can be triggered by hand. It fetches upstream, finds the newest `mojo/v*` release tag, and replays the series onto it.
+`.github/workflows/upstream-sync.yml` runs every Monday and can be triggered by hand. It fetches upstream, replays the series onto the newer commit, and either opens a pull request or files one drift issue.
 
 If the series applies cleanly, it opens a pull request that updates `upstream.lock` and any patch files that shifted. Review it like any other change, check CI, merge it.
 
-If the series conflicts, it does not touch anything. It opens or updates a single tracking issue labelled `upstream-drift` naming the tag it tried and the first patch that failed. One issue, updated in place, so a month of failed bumps is one notification and not four.
+If the series conflicts, it does not touch anything. It opens or updates a single tracking issue labelled `upstream-drift` naming what it tried and the first patch that failed. One issue, updated in place, so a month of failed bumps is one notification and not four.
 
-The pin follows release tags rather than `main` on purpose. Chasing nightlies means constant small breakage for no benefit while the port is still being built. `bump-upstream.sh --branch main` exists for when you specifically want to test against the tip.
+## Why the pin follows main and not release tags
+
+It should follow release tags. Chasing nightlies means constant small breakage for no benefit while the port is still being built, and a tag is a much better thing to reproduce against than a moving branch. That was the original design and it is what this document used to say.
+
+It cannot, for now, and the reason is worth writing down because it is not obvious and it wasted a real amount of time.
+
+Mojo was open sourced in stages. The `mojo/v1.0.0` tag is from 11 August 2026 and its tree contains `mojo/stdlib`, docs, examples and the integration tests. It does not contain the compiler. `Mojo/lib`, `Mojo/tools`, `Support`, `AsyncRT` and the rest of the C++ landed on `main` after that tag, some time before 2 September 2026. There is no release tag carrying the compiler yet, and `mojo/v1.0.0` is still the newest one.
+
+Almost everything this project does is compiler work, so a pin at `mojo/v1.0.0` is a pin at a tree where the files we patch do not exist. Every patch fails to apply and the error tells you nothing about why.
+
+So the default for `bump-upstream.sh` is the tip of `main`, and `scripts/common.sh` now refuses any pin whose tree is missing `Support/BUILD.bazel`, `Mojo/lib/KGENToLLVM/CABILowering.cpp`, `Mojo/tools/mojo/Build/mojo-build.cpp` or `Mojo/stdlib`. That guard exists so this specific mistake cannot be made twice, including by the scheduled workflow.
+
+Switch the default back to release tags the moment upstream tags one that carries the compiler. The tag path in the script still works and is still the better answer.
 
 ## What is pinned right now
 
-See `upstream.lock`. As of writing, `mojo/v1.0.0`.
+See `upstream.lock`. As of writing, upstream `main` at `9aba62be`.
 
-One caveat worth knowing. The source audit that produced these documents and the issue backlog was done against upstream `main` at `9aba62be`, not against the `mojo/v1.0.0` tag, and it is recorded in the lock as `audit_commit`. Line numbers quoted in issues and documents are relative to that commit and will drift. File paths and quoted code are the durable part, so if a line number does not match, search for the quoted snippet.
+That is the same commit the source audit behind these documents was done against, which is a happy accident rather than a plan. It does mean the line numbers quoted in the issues and documents are accurate as of the pin rather than approximately right. They will still drift as the pin moves, so if a line number does not match, search for the quoted snippet. File paths and quoted code are the durable part.
