@@ -323,6 +323,11 @@ modular_cc_library(
 
 modular_cc_library(
     name = "CrashReporting",
+    # The glob picks up both CrashReporting.cpp and CrashReportingUnsupported.cpp.
+    # They carry opposite _WIN32 guards, so exactly one of them contributes anything,
+    # and srcs stays a plain glob. A select here would have been the obvious thing and
+    # does not work: clang-tidy gets a test target per source file, generated while the
+    # package loads, and there is no way to enumerate a select() at that point.
     srcs = glob(["lib/CrashReporting/*.cpp"]),
     hdrs = glob(["include/Support/CrashReporting/*.h"]),
     copts = [
@@ -331,10 +336,22 @@ modular_cc_library(
     deps = [
         ":Base",
         ":Configuration",
-        "//Config",
-        "@crashpad//:client",
         "@llvm-project//llvm:Support",
-    ],
+    ] + select({
+        # The crashpad BUILD file we fetch has a Linux arm and a macOS arm and nothing
+        # else, so @crashpad//:client does not configure for a Windows target and the
+        # whole analysis stops on it. This is its only first party use, so dropping it
+        # here takes crashpad out of the graph entirely.
+        #
+        # //Config goes with it because that is Config/Version.h, which only the
+        # crashpad implementation reads, to label the reports it sends. Nothing here
+        # sends anything.
+        "@platforms//os:windows": [],
+        "//conditions:default": [
+            "//Config",
+            "@crashpad//:client",
+        ],
+    }),
 )
 
 modular_cc_library(
