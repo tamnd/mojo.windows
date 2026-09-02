@@ -67,13 +67,15 @@ else
   NEW_COMMIT="$(git rev-parse "refs/tags/$TARGET^{commit}")"
 fi
 
+# Before anything else, check the candidate is a tree we can actually patch. This runs
+# ahead of the already-pinned check on purpose, so that a plain run also tells you when
+# the pin you are sitting on is the broken one.
+assert_pinnable "$NEW_COMMIT"
+
 if [ "$NEW_COMMIT" = "$OLD_COMMIT" ]; then
   info "already pinned to $NEW_TAG ($NEW_COMMIT), nothing to do"
   exit 0
 fi
-
-# Before doing any work, check the candidate is a tree we can actually patch.
-assert_pinnable "$NEW_COMMIT"
 
 info "old pin $OLD_TAG ($OLD_COMMIT)"
 info "new pin $NEW_TAG ($NEW_COMMIT)"
