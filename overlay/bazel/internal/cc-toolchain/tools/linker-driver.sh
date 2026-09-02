@@ -46,6 +46,60 @@ for arg in "$@"; do
   esac
 done
 
+# rules_cc puts -Xlinker -rpath -Xlinker $ORIGIN/<dir> on the link line for every
+# directory a target's dynamic dependencies live in. That is right on Linux, and the
+# same thing with @loader_path is right on macOS, and on Windows it is not so much
+# wrong as meaningless. $ORIGIN is an ELF concept that the dynamic loader expands at
+# load time, PE has no equivalent, and lld-link has no -rpath at all. It warns about
+# the option it does not know, and then reads the path that followed it as an input
+# file, so what comes out is
+#
+#   lld-link: error: could not open '$ORIGIN/../_solib_win64/_USupport'
+#
+# which reads like a missing library rather than a flag nobody removed.
+#
+# Dropping them is the whole fix and not half of one. What an rpath is arranging,
+# that a binary finds its shared libraries next to itself, is what the PE loader
+# already does: its search order starts with the directory the executable was loaded
+# from. There is nothing to translate the flag into. Windows still needs the DLLs to
+# be in that directory rather than in a sibling _solib_ tree, but that is a runfiles
+# layout question and not a link line one.
+#
+# This is done here, rather than by turning off the feature that generates them,
+# because the feature cannot be turned off from outside rules_cc. rules_cc's own
+# runtime_library_search_directories feature is not marked overridable, and it is
+# pulled in wholesale by experimental_replace_legacy_action_config_features, which
+# this toolchain enables. Overriding the legacy feature underneath it instead gets
+# both into the toolchain under one name and fails analysis on every platform. The
+# alternative was to copy rules_cc's twenty five entry feature list into our own
+# BUILD file minus one line, and then keep that copy in step forever.
+if [[ "${WINDOWS:-}" == "true" ]]; then
+  filtered_args=()
+  i=0
+  while ((i < ${#linker_args[@]})); do
+    arg="${linker_args[i]}"
+    case "$arg" in
+      # The generated form, four tokens: -Xlinker -rpath -Xlinker <path>.
+      -Xlinker)
+        if [[ "${linker_args[i + 1]:-}" == "-rpath" ]]; then
+          i=$((i + 4))
+          continue
+        fi
+        ;;
+      # Not generated for this target today, but hand written -Wl,-rpath,DIR is the
+      # spelling everywhere else in this tree, so it is cheaper to catch it here than
+      # to find out later that one slipped through as a filename.
+      -Wl,-rpath,* | -Wl,-rpath)
+        i=$((i + 1))
+        continue
+        ;;
+    esac
+    filtered_args+=("$arg")
+    i=$((i + 1))
+  done
+  linker_args=("${filtered_args[@]}")
+fi
+
 # Windows produces its interface library during the link rather than after it, so
 # the flag has to go on before clang runs. An import library is what Windows has
 # instead of the ELF stub shared object that llvm-ifs writes, and lld-link is the
