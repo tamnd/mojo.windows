@@ -39,6 +39,11 @@ register_toolchains(
 )
 
 llvm_source = use_extension("//bazel/public-patches:llvm_source.bzl", "llvm_source")
+
+# extra_patches is the hook llvm_source.bzl already offers for exactly this, so we
+# do not have to touch its PATCHES list and pick up a conflict on every bump.
+llvm_source.configure(extra_patches = ["//bazel/public-patches:llvm_windows_stack_flag.patch"])
+
 use_repo(llvm_source, "llvm-raw")
 
 llvm_configure = use_extension("//bazel/public-patches:llvm_project.bzl", "llvm_configure")
