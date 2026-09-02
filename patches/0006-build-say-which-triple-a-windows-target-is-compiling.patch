@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tamnd <1218621+tamnd@users.noreply.github.com>
+Date: Wed, 2 Sep 2026 23:19:57 +0800
+Subject: build: say which triple a windows target is compiling for
+
+Three selects that name a target triple or a debug stub had a Linux arm and a
+macOS arm and nothing else, so a Windows targeted build fails analysis on all
+three. They are the last of the target scoped ones outside the cc toolchain.
+
+The Mojo copts toolchain gets x86_64-pc-windows-msvc and deliberately no
+--target-cpu. The Linux arms pick x86-64-v3 and neoverse-n1, which is a sensible
+thing to do when you know what your machines are. Nothing is known about the
+machines a Windows build lands on, and x86-64-v3 wants AVX2, so copying that
+choice would mean shipping a compiler that dies with an illegal instruction on
+anything older than Haswell. Generic x86-64 until somebody picks a baseline on
+purpose.
+
+llvm-lit gets the same triple, since its TARGET_TRIPLE substitution is the same
+question asked by the test harness.
+
+The LLDB debugserver path gets an empty dict. LLDB on Windows debugs in process
+through the Win32 debug API and has no out of process stub, so there is nothing
+to point at, and pointing at a target that is not built would be worse than
+saying nothing.
+
+Signed-off-by: tamnd <1218621+tamnd@users.noreply.github.com>
+---
+ bazel/internal/BUILD.bazel          | 9 +++++++++
+ bazel/internal/config.bzl           | 4 ++++
+ bazel/internal/llvm-lit/BUILD.bazel | 1 +
+ 3 files changed, 14 insertions(+)
+
+diff --git a/bazel/internal/BUILD.bazel b/bazel/internal/BUILD.bazel
+index 55711faf6e..5bfa273e9c 100644
+--- a/bazel/internal/BUILD.bazel
++++ b/bazel/internal/BUILD.bazel
+@@ -164,6 +164,15 @@ mojo_copts_toolchain(
+         "@platforms//os:macos": [
+             "--target-cpu=apple-m1",
+         ],
++        # No --target-cpu on purpose. The Linux arms pick x86-64-v3 and neoverse-n1,
++        # which are reasonable when you know what your machines are. Nothing is known
++        # about the machines a Windows build lands on, and x86-64-v3 wants AVX2, so
++        # picking a baseline here would mean shipping a compiler that dies with an
++        # illegal instruction on hardware older than Haswell. Generic x86-64 until
++        # somebody picks a baseline on purpose.
++        "//:windows_x86_64": [
++            "-target-triple=x86_64-pc-windows-msvc",
++        ],
+     }) + select({
+         "//:asan": ["--sanitize=address"],
+         "//:tsan": ["--sanitize=thread"],
+diff --git a/bazel/internal/config.bzl b/bazel/internal/config.bzl
+index edb67a0351..526d68d851 100644
+--- a/bazel/internal/config.bzl
++++ b/bazel/internal/config.bzl
+@@ -284,6 +284,10 @@ def env_for_available_tools(
+     os_specifics = select({
+         "@platforms//os:linux": {"LLDB_DEBUGSERVER_PATH": build_path(Label("@llvm-project//lldb:lldb-server"), lambda x: x)},
+         "@platforms//os:macos": {"LLDB_DEBUGSERVER_PATH": build_path(Label("@llvm-project//lldb:debugserver"), lambda x: x)},
++        # LLDB on Windows debugs in process through the native Win32 debug API and has
++        # no out of process stub to point at, so there is no path to set. An empty dict
++        # rather than a path to something that does not get built.
++        "@platforms//os:windows": {},
+     }) | select({
+         # buildifier: disable=canonical-repository
+         "@@//:use_prebuilt_mojo_toolchain_disabled": {},
+diff --git a/bazel/internal/llvm-lit/BUILD.bazel b/bazel/internal/llvm-lit/BUILD.bazel
+index 4e50aac7d3..455743b915 100644
+--- a/bazel/internal/llvm-lit/BUILD.bazel
++++ b/bazel/internal/llvm-lit/BUILD.bazel
+@@ -48,6 +48,7 @@ modular_versioned_expand_template(
+         "//:linux_aarch64": {"@TARGET_TRIPLE@": "aarch64-unknown-linux-gnu"},
+         "//:linux_x86_64": {"@TARGET_TRIPLE@": "x86_64-unknown-linux-gnu"},
+         "@platforms//os:macos": {"@TARGET_TRIPLE@": "arm64-apple-macosx"},
++        "//:windows_x86_64": {"@TARGET_TRIPLE@": "x86_64-pc-windows-msvc"},
+     }),
+     template = "lit.common.configured.in",
+ )
+-- 
+2.43.0
+
