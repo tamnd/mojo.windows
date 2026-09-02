@@ -799,6 +799,27 @@ http_archive(
     url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/gperftools/2.15/0d1dbb0273d94d32e28ccb53971d1473cab9bde90a463251f6f117867cf2d680/tcmalloc.tar.gz",
 )
 
+# mimalloc, the allocator for the Windows target. tcmalloc as patched in this tree
+# wants glibc restartable sequences and reads NUMA topology out of Linux sysfs, and
+# gperftools has no Windows build, so neither of the two allocators already here can
+# follow us across. mimalloc is Microsoft's own, it is a real allocator rather than a
+# thin wrapper over the CRT, and it is maintained on all three platforms, so choosing
+# it does not create a fourth thing that only we have to keep alive.
+#
+# This is an http_archive with our own build file rather than the mimalloc module in
+# the Bazel Central Registry, and bazel/public-patches/mimalloc.BUILD explains why at
+# length. The short version is that the registry module is built for overriding malloc
+# process wide and we want the named API only, which is the same shape as the tcmalloc
+# target it replaces. Fetching source and writing a build file is also what this tree
+# already does one entry above, for gperftools on macOS.
+http_archive(
+    name = "mimalloc",
+    build_file = "//bazel/public-patches:mimalloc.BUILD",
+    sha256 = "754a98de5e2912fddbeaf24830f982b4540992f1bab4a0a8796ee118e0752bda",
+    strip_prefix = "mimalloc-2.2.4",
+    url = "https://github.com/microsoft/mimalloc/archive/refs/tags/v2.2.4.tar.gz",
+)
+
 npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm", dev_dependency = True)
 
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
