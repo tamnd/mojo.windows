@@ -22,9 +22,11 @@ edit	390a64081dec7c0a946f1f17d56765f40c0061e6	Support/include/Support/STLExtras.
 edit	f00c8b1f7334a036e7a0bad8a85033a538f4f446	Support/include/Support/Threading/HWInfo.h
 new	-	Support/include/Support/WindowsHeader.h
 edit	b8ab17ec375a32423ca610799241edb9c8fa4f4f	Support/lib/BinaryID.cpp
+edit	c84112691dafc1501f03d7eab07b2aae2505f985	Support/lib/CPUCache.cpp
 edit	522cca99a76aed3c491be40b8118214dc2305171	Support/lib/CrashReporting/CrashReporting.cpp
 new	-	Support/lib/CrashReporting/CrashReportingUnsupported.cpp
 edit	ee092edd6b4e4af796fd1d255e391d9ff056e1be	Support/lib/Debugger.cpp
+edit	873b32992489965084c3d9d337a60f393b05d52a	Support/lib/FileSystemExtras.cpp
 edit	a8726b6e49d8730fa003dd3e3222a6c595ae8307	Support/lib/NixlPluginDir.cpp
 new	-	Support/lib/NixlPluginDirUnsupported.cpp
 edit	466c80292741c3d6ce1efc0edf6f12d2c0e19d41	Support/lib/Telemetry/TelemetryContext.cpp
