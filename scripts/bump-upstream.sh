@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # Move the pin to a newer upstream commit and check the patch series still applies.
 #
-#   ./scripts/bump-upstream.sh                  # newest mojo/* tag
-#   ./scripts/bump-upstream.sh mojo/v1.0.1      # a specific tag
-#   ./scripts/bump-upstream.sh --branch main    # tip of a branch, for nightly chasing
+#   ./scripts/bump-upstream.sh                  # tip of main, see the note below
+#   ./scripts/bump-upstream.sh mojo/v1.1.0      # a specific tag
+#   ./scripts/bump-upstream.sh --branch main    # tip of a branch
+#   ./scripts/bump-upstream.sh --commit <sha>   # an exact commit
+#
+# The default is the tip of main rather than the newest release tag, which is not what
+# you would normally want. The reason is that the newest mojo/v* release tag is v1.0.0
+# from 11 August 2026, and the compiler was not open sourced until after it. That tag
+# contains the standard library and nothing else, so every patch this project needs to
+# write targets files that do not exist in it. Until there is a release tag carrying the
+# compiler, tracking main is the only option. Switch the default back the moment one
+# exists.
 #
 # On success it rewrites upstream.lock and patches/ and leaves the result staged for you
 # to review. On failure it leaves upstream.lock untouched and prints which patches broke.
@@ -19,12 +28,14 @@ REPO="$(upstream_repo)"
 OLD_COMMIT="$(upstream_commit)"
 OLD_TAG="$(upstream_tag)"
 
-MODE=tag
+MODE=branch
 TARGET="${1:-}"
-if [ "$TARGET" = "--branch" ]; then
-  MODE=branch
-  TARGET="${2:-main}"
-fi
+case "$TARGET" in
+  --branch) MODE=branch; TARGET="${2:-main}" ;;
+  --commit) MODE=commit; TARGET="${2:-}"; [ -n "$TARGET" ] || die "--commit needs a sha" ;;
+  "")       MODE=branch; TARGET=main ;;
+  *)        MODE=tag ;;
+esac
 
 mkdir -p "$WORK_DIR"
 if [ ! -d "$CHECKOUT/.git" ]; then
@@ -40,6 +51,10 @@ if [ "$MODE" = branch ]; then
   NEW_REF="refs/heads/$TARGET"
   NEW_TAG="$TARGET"
   NEW_COMMIT="$(git rev-parse "origin/$TARGET")"
+elif [ "$MODE" = commit ]; then
+  NEW_COMMIT="$(git rev-parse -q --verify "$TARGET^{commit}")" || die "no such commit upstream: $TARGET"
+  NEW_REF="$NEW_COMMIT"
+  NEW_TAG="$(git describe --tags --always "$NEW_COMMIT" 2>/dev/null || printf '%s' "${NEW_COMMIT:0:12}")"
 else
   if [ -z "$TARGET" ]; then
     # Newest mojo/vX.Y.Z tag by commit date, ignoring prereleases.
@@ -56,6 +71,9 @@ if [ "$NEW_COMMIT" = "$OLD_COMMIT" ]; then
   info "already pinned to $NEW_TAG ($NEW_COMMIT), nothing to do"
   exit 0
 fi
+
+# Before doing any work, check the candidate is a tree we can actually patch.
+assert_pinnable "$NEW_COMMIT"
 
 info "old pin $OLD_TAG ($OLD_COMMIT)"
 info "new pin $NEW_TAG ($NEW_COMMIT)"
