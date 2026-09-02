@@ -1,0 +1,31 @@
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -20,7 +20,13 @@
+ ]
+ 
+ MSVC_COPTS = [
+-    "/std:c++17",
++    # -std= and not /std:. This build reaches Windows through clang's GNU
++    # driver rather than cl, and the GNU driver reads a leading slash as a
++    # path, so this came back as "no such file or directory" once for each of
++    # the nineteen sources in src. The two spellings mean the same thing and
++    # clang understands the GNU one on every target, so the name of this list
++    # is now the only thing left in here that still says MSVC.
++    "-std=c++17",
+ ]
+ 
+ config_setting(
+@@ -63,7 +69,12 @@
+     }),
+     includes = ["include"],
+     linkopts = select({
+-        ":windows": ["-DEFAULTLIB:shlwapi.lib"],
++        # -Wl, is doing real work here. /DEFAULTLIB is a linker argument, and
++        # in a linkopts it reaches the clang driver first, which reads the old
++        # spelling as -D EFAULTLIB:shlwapi.lib and defines a macro nobody asked
++        # for. No error, no library, and the failure turns up much later as a
++        # missing symbol. This is the same silent shape curl had.
++        ":windows": ["-Wl,/DEFAULTLIB:shlwapi.lib"],
+         "//conditions:default": ["-pthread"],
+     }),
+     # Only static linking is allowed; no .so will be produced.
