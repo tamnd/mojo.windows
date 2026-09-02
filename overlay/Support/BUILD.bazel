@@ -1182,9 +1182,16 @@ modular_shared_library(
         # targets and reading the undefined symbol back out of each object file. The
         # Itanium side of that came out byte for byte identical to the Linux arm above,
         # which is the check that the declaration was reproduced correctly.
+        #
+        # Both are -Wl, prefixed because linkopts go to the compiler driver, not to the
+        # linker, and this build drives clang in GNU mode. A bare /INCLUDE: is read as a
+        # path and comes back as "no such file or directory", which is the same shape
+        # zlib-ng, curl and boringssl all produced. -Wl, is what hands it to lld-link
+        # unchanged. Neither name contains a comma, which is the one thing that would
+        # make this spelling wrong.
         "@platforms//os:windows": [
-            "/INCLUDE:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
-            "/EXPORT:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
+            "-Wl,/INCLUDE:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
+            "-Wl,/EXPORT:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
         ],
     }),
     output_name = "MSupportGlobals",
