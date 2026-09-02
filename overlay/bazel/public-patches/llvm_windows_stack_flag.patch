@@ -1,0 +1,24 @@
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -471,8 +471,20 @@
+     features = ["-parse_headers"],
+     includes = ["include"],
+     linkopts = select({
++        # The name of this arm says mingw, but the condition underneath it is just
++        # "Windows, and the compiler is clang", which is us too. We are clang
++        # driving lld-link with --target=x86_64-pc-windows-msvc, so the GNU spelling
++        # of the stack size reaches a linker that has never heard of it:
++        #
++        #   lld-link: warning: ignoring unknown argument '--stack'
++        #   lld-link: error: could not open '16777216': No such file or directory
++        #
++        # /STACK: is what lld-link takes, and -Wl, is what gets it past the GNU
++        # driver, which would otherwise read the leading slash as a path. Same 16 MB
++        # either way. The -l flags below need no help: clang's MSVC driver already
++        # turns -lole32 into ole32.lib.
+         ":is_windows_clang_mingw": [
+-            "-Wl,--stack,16777216",
++            "-Wl,/STACK:16777216",
+             "-lole32",
+             "-luuid",
+             "-lws2_32",
