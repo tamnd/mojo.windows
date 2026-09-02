@@ -109,6 +109,21 @@ cc_args(
     },
 )
 
+# minwindef.h defines min and max as function-like macros, so std::numeric_limits<T>::max()
+# expands to something that is not a call and the error talks about binary operands. On a
+# -k build of //Support:all that one macro pair was 228 errors, all of them in boringssl and
+# none of them boringssl's fault. NOMINMAX has been the documented way to turn it off since
+# the 1990s.
+#
+# On the toolchain rather than on a target because every target that reaches a Windows
+# header has the same exposure, and a target that reaches none is unaffected by a define it
+# never uses.
+cc_args(
+    name = "windows_defines",
+    actions = ["@rules_cc//cc/toolchains/actions:compile_actions"],
+    args = ["-DNOMINMAX"],
+)
+
 cc_args(
     name = "windows_sysroot_libraries",
     actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
@@ -132,6 +147,7 @@ cc_args(
             "//:linux_aarch64": [":linux_sysroot_aarch64"],
             "@platforms//os:macos": [":macos_sysroot"],
             "@platforms//os:windows": [
+                ":windows_defines",
                 ":windows_sysroot_headers",
                 ":windows_sysroot_libraries",
             ],
