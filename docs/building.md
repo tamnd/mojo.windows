@@ -14,6 +14,19 @@ Always use `./bazelw` from inside that checkout rather than a system Bazel or a 
 
 You also have to pass one of `--config=build-mojo` or `--config=prebuilt-mojo`. The wrapper enforces it. For this project it is always `build-mojo`, because `prebuilt-mojo` downloads a nightly wheel from Modular and there will never be a Windows one there.
 
+## Say who built it
+
+Every binary produced here has to identify itself as not being a Modular build. The first patch in the series adds three Bazel settings for that, `//:downstream_id`, `//:downstream_build` and `//:downstream_upstream_commit`, all empty by default. Empty means the binary claims to be an ordinary Modular build, which for anything built here would be untrue, so pass them on every build:
+
+```sh
+cd .upstream/modular
+./bazelw build --config=build-mojo $(../../scripts/downstream-flags.sh) //Mojo/tools/mojo
+```
+
+`scripts/downstream-flags.sh` works the values out rather than hardcoding them. The build revision is this repository's `HEAD`, suffixed with `-dirty` when the tree has uncommitted changes, and the upstream commit comes from `upstream.lock`. Nothing in it goes stale when the pin moves.
+
+The result is that `mojo --version` names the project and the revision on its first line, `mojo --version --verbose` adds the upstream commit, and a crash points the reporter here instead of at Modular's tracker.
+
 ## Cross compiling, which is the plan
 
 We build on Linux and target Windows. Every Bazel action still runs on Linux, which means the bash toolchain drivers keep working and the `bazelw` bootstrapper never has to deal with Windows. That avoids a whole category of problems until we choose to take them on.
