@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
 load("@rules_cc//cc/toolchains:artifacts.bzl", "cc_artifact_name_pattern")
 load("@rules_cc//cc/toolchains:make_variable.bzl", "cc_make_variable")
 load("@rules_cc//cc/toolchains:toolchain.bzl", "cc_toolchain")
@@ -43,6 +44,61 @@ cc_sysroot(
     sysroot = "@sysroot-macos//sysroot:root",
 )
 
+# Not a cc_sysroot, and the difference is the point. cc_sysroot emits --sysroot=DIR,
+# which is a Unix idea: one directory with usr/include and usr/lib underneath it, laid
+# out the way the compiler already expects. Microsoft's headers and import libraries are
+# not laid out that way and clang's msvc driver does not look for them that way, so the
+# paths have to be handed over one at a time. The seven below are exactly the seven the
+# splat produces, and they are the same seven the sysroot repository rule globs, so if
+# you add one here add it there too or Bazel will pass a path to a directory it did not
+# make an input.
+#
+# Nothing here fails when MOJO_WINDOWS_SYSROOT is unset. The repository is still a valid
+# empty one, {root} still resolves, and clang silently ignores include directories that
+# do not exist, so analysis works everywhere and only a real compile hits missing
+# headers. See windows_sysroot_repository.bzl.
+#
+# The headers and the import libraries are two targets rather than one because they go on
+# different actions. The three sysroots above get away with one because --sysroot means
+# something to both halves of the driver. A -L on a compile is an argument clang never
+# reads, and this toolchain builds with -Werror=unused-command-line-argument, so putting
+# all seven on every action turns every compile into three errors about the linker.
+cc_args(
+    name = "windows_sysroot_headers",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:compile_actions",
+        "@rules_cc//cc/toolchains/actions:link_actions",
+    ],
+    allowlist_include_directories = ["@sysroot-windows//sysroot:root"],
+    args = [
+        "-isystem",
+        "{root}/crt/include",
+        "-isystem",
+        "{root}/sdk/include/ucrt",
+        "-isystem",
+        "{root}/sdk/include/um",
+        "-isystem",
+        "{root}/sdk/include/shared",
+    ],
+    data = ["@sysroot-windows//sysroot:directory"],
+    format = {"root": "@sysroot-windows//sysroot:root"},
+)
+
+cc_args(
+    name = "windows_sysroot_libraries",
+    actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
+    args = [
+        "-L",
+        "{root}/crt/lib/x86_64",
+        "-L",
+        "{root}/sdk/lib/ucrt/x86_64",
+        "-L",
+        "{root}/sdk/lib/um/x86_64",
+    ],
+    data = ["@sysroot-windows//sysroot:directory"],
+    format = {"root": "@sysroot-windows//sysroot:root"},
+)
+
 [
     cc_toolchain(
         name = "{}_clang_toolchain".format(platform),
@@ -50,6 +106,10 @@ cc_sysroot(
             "//:linux_x86_64": [":linux_sysroot_x86_64"],
             "//:linux_aarch64": [":linux_sysroot_aarch64"],
             "@platforms//os:macos": [":macos_sysroot"],
+            "@platforms//os:windows": [
+                ":windows_sysroot_headers",
+                ":windows_sysroot_libraries",
+            ],
         }) + [
             "//bazel/internal/cc-toolchain/args:resource_dir_args",
             "//bazel/internal/cc-toolchain/args:compile_and_link_args",
@@ -74,6 +134,14 @@ cc_sysroot(
             "@platforms//os:macos": [
                 ":macos-dylib-pattern",
                 ":macos-tbd-pattern",
+            ],
+            "@platforms//os:windows": [
+                ":windows-executable-pattern",
+                ":windows-object-pattern",
+                ":windows-static-library-pattern",
+                ":windows-alwayslink-static-library-pattern",
+                ":windows-dll-pattern",
+                ":windows-implib-pattern",
             ],
             "//conditions:default": [],
         }),
@@ -151,6 +219,57 @@ cc_artifact_name_pattern(
     prefix = "lib",
 )
 
+# Bazel's defaults for all of these are the Unix ones, lib%s.a and %s.o and a bare name
+# for an executable, so every one of them has to be stated. The prefix is empty rather
+# than absent for the same reason: leaving it out means lib, not nothing.
+#
+# The two .lib patterns look like a mistake and are not. A static library and the import
+# library that stands in front of a DLL are both .lib files on Windows and nothing in the
+# file name distinguishes them, so the convention is to give the import library an
+# infix. .if.lib is the one Bazel's own MSVC toolchain uses and there is no reason to
+# invent a different one.
+cc_artifact_name_pattern(
+    name = "windows-executable-pattern",
+    category = "@rules_cc//cc/toolchains/artifacts:executable",
+    extension = ".exe",
+    prefix = "",
+)
+
+cc_artifact_name_pattern(
+    name = "windows-object-pattern",
+    category = "@rules_cc//cc/toolchains/artifacts:object_file",
+    extension = ".obj",
+    prefix = "",
+)
+
+cc_artifact_name_pattern(
+    name = "windows-static-library-pattern",
+    category = "@rules_cc//cc/toolchains/artifacts:static_library",
+    extension = ".lib",
+    prefix = "",
+)
+
+cc_artifact_name_pattern(
+    name = "windows-alwayslink-static-library-pattern",
+    category = "@rules_cc//cc/toolchains/artifacts:alwayslink_static_library",
+    extension = ".lo.lib",
+    prefix = "",
+)
+
+cc_artifact_name_pattern(
+    name = "windows-dll-pattern",
+    category = "@rules_cc//cc/toolchains/artifacts:dynamic_library",
+    extension = ".dll",
+    prefix = "",
+)
+
+cc_artifact_name_pattern(
+    name = "windows-implib-pattern",
+    category = "@rules_cc//cc/toolchains/artifacts:interface_library",
+    extension = ".if.lib",
+    prefix = "",
+)
+
 cc_make_variable(
     name = "macos_stack_frame",
     value = "-Wframe-larger-than=100000000 -Wno-vla",
@@ -193,6 +312,45 @@ toolchain(
     tags = [TOP_LEVEL_TAG],  # Used from MODULE.bazel
     target_compatible_with = ["@platforms//os:macos"],
     toolchain = ":macos_clang_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
+# Windows target, cross compiled from Linux x86_64, and only from there.
+#
+# The name of a cc_toolchain above says which machine runs it and not what it produces.
+# That was already true before Windows existed here, which is what the comment on the
+# aarch64 registration is getting at, and it is what makes this cheap. Every select
+# inside those cc_toolchain definitions is keyed on the target platform, so pointing a
+# second toolchain() at an existing cc_toolchain with a Windows target picks up the
+# Windows flags without duplicating anything.
+#
+# Only one execution platform, and that is a real limitation rather than a decision to
+# be tidy. Several selects in this toolchain are keyed on the target platform but mean
+# the execution platform: which clang tarball to take the resource directory and the
+# builtin headers from, for instance, in tools/BUILD.bazel. Those work today because
+# for a Linux or macOS target the two happen to agree. They stop agreeing the moment
+# you cross compile to a third OS, and a target keyed select cannot tell macOS host
+# from Linux host, so it has to be pinned to one host and Linux x86_64 is the one the
+# project builds on. Registering macOS as well would not fail, it would quietly hand a
+# macOS clang the Linux clang's resource directory, which is worse.
+#
+# Lifting that needs execution platform keyed config settings, which do not exist here
+# yet. Until then, cross compile from Linux x86_64.
+#
+# Execution still happens on the host either way, so the bash toolchain drivers are
+# untouched and none of this is a step toward building on Windows, which is M6.
+toolchain(
+    name = "windows-x86_64-toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    tags = [TOP_LEVEL_TAG],  # Used from MODULE.bazel
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+    ],
+    toolchain = ":linux-x86_64_clang_toolchain",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
 
