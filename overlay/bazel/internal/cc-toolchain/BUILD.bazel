@@ -57,8 +57,14 @@ cc_sysroot(
 # empty one, {root} still resolves, and clang silently ignores include directories that
 # do not exist, so analysis works everywhere and only a real compile hits missing
 # headers. See windows_sysroot_repository.bzl.
+#
+# The headers and the import libraries are two targets rather than one because they go on
+# different actions. The three sysroots above get away with one because --sysroot means
+# something to both halves of the driver. A -L on a compile is an argument clang never
+# reads, and this toolchain builds with -Werror=unused-command-line-argument, so putting
+# all seven on every action turns every compile into three errors about the linker.
 cc_args(
-    name = "windows_sysroot",
+    name = "windows_sysroot_headers",
     actions = [
         "@rules_cc//cc/toolchains/actions:compile_actions",
         "@rules_cc//cc/toolchains/actions:link_actions",
@@ -73,6 +79,15 @@ cc_args(
         "{root}/sdk/include/um",
         "-isystem",
         "{root}/sdk/include/shared",
+    ],
+    data = ["@sysroot-windows//sysroot:directory"],
+    format = {"root": "@sysroot-windows//sysroot:root"},
+)
+
+cc_args(
+    name = "windows_sysroot_libraries",
+    actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
+    args = [
         "-L",
         "{root}/crt/lib/x86_64",
         "-L",
@@ -91,7 +106,10 @@ cc_args(
             "//:linux_x86_64": [":linux_sysroot_x86_64"],
             "//:linux_aarch64": [":linux_sysroot_aarch64"],
             "@platforms//os:macos": [":macos_sysroot"],
-            "@platforms//os:windows": [":windows_sysroot"],
+            "@platforms//os:windows": [
+                ":windows_sysroot_headers",
+                ":windows_sysroot_libraries",
+            ],
         }) + [
             "//bazel/internal/cc-toolchain/args:resource_dir_args",
             "//bazel/internal/cc-toolchain/args:compile_and_link_args",
