@@ -1,7 +1,8 @@
 * text=auto eol=lf
 
-# Patches are byte exact. Never let git touch their line endings.
-patches/*.patch -text
+# Overlay files are byte exact copies of upstream source with our edits in them, so
+# git normalising their line endings would show up as a diff against every file we own.
+overlay/** -text
 
 # Windows native scripts keep CRLF so they run from cmd.exe unmodified.
 *.ps1 text eol=crlf
