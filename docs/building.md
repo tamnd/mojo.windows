@@ -53,6 +53,14 @@ The GNU driver reads a leading slash as a path, so the first symptom is `clang: 
 
 Two things make them worth a moment rather than a reflex. `--per_file_copt` cannot help, whatever it looks like, because it only ever adds flags and the problem is a flag that is already there. And the Windows arm of one of these selects is usually missing more than the suppressions: zlib-ng's was also missing the `-std=c11` that both other arms got, because whoever wrote it was thinking about cl, which does not need it. Read the whole arm rather than just deleting the slashes.
 
+### Including windows.h
+
+Nothing in this project includes `<windows.h>` directly. Include `Support/WindowsHeader.h` instead, and depend on `//Support:WindowsHeader`. It is safe to include unconditionally, because on any other platform it expands to nothing.
+
+The reason for the indirection is that windows.h defines several hundred macros with names an ordinary program might want, and which of them it defines depends on macros you set before including it. `NOMINMAX` and `WIN32_LEAN_AND_MEAN` are the two that matter so far. That makes the header both order dependent and configuration dependent, and the failure mode is that everything works in every file until it does not work in one, and the file it breaks is usually not the file that got it wrong. One header, one place to decide, one place to explain why.
+
+`NOMINMAX` is also passed by the toolchain, so it is set twice on purpose. The toolchain has to set it because it has to hold for code that never includes our header, all of boringssl for instance. The header sets it so that it is correct when read on its own, rather than correct only for as long as a BUILD file somewhere else keeps doing something.
+
 ## The Windows sysroot
 
 Run this once per machine, and pass Bazel the flag it prints:

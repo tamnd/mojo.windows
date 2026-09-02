@@ -48,6 +48,16 @@ modular_cc_library(
     hdrs = ["include/Support/ADT/ConcurrentAppendingVector.h"],
 )
 
+# A target of its own rather than a header dropped into Base, so that depending on
+# windows.h is something a BUILD file says out loud. There is no Windows only
+# dependency in here to gate, since the header is empty on every other platform.
+# This is about being able to answer "what pulls in windows.h" by reading the
+# graph, which is worth keeping true while the number of answers is still small.
+modular_cc_library(
+    name = "WindowsHeader",
+    hdrs = ["include/Support/WindowsHeader.h"],
+)
+
 modular_cc_library(
     name = "Base",
     srcs = [
@@ -92,6 +102,8 @@ modular_cc_library(
         ":ConcurrentAppendingVector",
         ":Globals",
         ":SymbolExport",
+        # For Debugger.cpp, which polls IsDebuggerPresent.
+        ":WindowsHeader",
         "//Config",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
