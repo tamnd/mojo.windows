@@ -66,9 +66,9 @@ jobs:
 
       - name: Build the archive
         run: |
-          name="mojo-windows-patches-${{ steps.meta.outputs.version }}"
+          name="mojo-windows-overlay-${{ steps.meta.outputs.version }}"
           mkdir -p "dist/$name"
-          cp -r patches scripts docs upstream.lock README.md LICENSE NOTICE "dist/$name/"
+          cp -r overlay scripts docs upstream.lock README.md LICENSE NOTICE "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           (cd dist && zip -qr "$name.zip" "$name")
           rm -rf "dist/$name"

@@ -64,4 +64,4 @@ This claim is worth re-checking first if the plan ever looks too good, since it 
 
 Issues carry an `area/` label matching these.
 
-`area/abi` is the calling convention and its conformance suite. `area/compiler` is everything else under `Mojo/lib` and `Mojo/tools`, mostly target driven rewiring. `area/runtime` is AsyncRT, the allocator, and the crash handler. `area/stdlib` is `Mojo/stdlib`. `area/build` is Bazel, the toolchain and the sysroot. `area/test` is the test suites and CI. `area/packaging` is releases and distribution. `area/upstream` is the pin, the series, and getting work accepted by Modular.
+`area/abi` is the calling convention and its conformance suite. `area/compiler` is everything else under `Mojo/lib` and `Mojo/tools`, mostly target driven rewiring. `area/runtime` is AsyncRT, the allocator, and the crash handler. `area/stdlib` is `Mojo/stdlib`. `area/build` is Bazel, the toolchain and the sysroot. `area/test` is the test suites and CI. `area/packaging` is releases and distribution. `area/upstream` is the pin, the overlay, and keeping up with upstream as it moves.

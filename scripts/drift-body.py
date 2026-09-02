@@ -32,6 +32,8 @@ def main() -> int:
     out = [
         f"The scheduled bump from `{before}` failed. The pin has not been changed.",
         "",
+        "Something in `overlay/` no longer merges onto the new upstream, so a person has to\nlook at it. The three way merge only fails when upstream edited the same lines we\ndid, which means the answer is a judgement call rather than a mechanical one.",
+        "",
         f"Last {TAIL_LINES} lines of the attempt:",
         "",
         fence,

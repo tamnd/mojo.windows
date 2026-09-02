@@ -77,9 +77,9 @@ jobs:
           commit-message: |
             build: bump upstream pin to ${{ steps.bump.outputs.after }}
 
-            Replayed the patch series onto ${{ steps.bump.outputs.after }}. Everything
-            applied cleanly, so this only touches upstream.lock and any patch files
-            whose context shifted.
+            Merged the overlay onto ${{ steps.bump.outputs.after }}. Every file merged
+            cleanly, so this touches upstream.lock and whichever overlay files upstream
+            moved underneath us.
           title: 'build: bump upstream pin to ${{ steps.bump.outputs.after }}'
           labels: |
             area/upstream
@@ -87,16 +87,17 @@ jobs:
           delete-branch: true
           add-paths: |
             upstream.lock
-            patches
+            overlay
           body: |
             Automated bump from `${{ steps.bump.outputs.before }}` to `${{ steps.bump.outputs.after }}`.
 
-            The whole patch series replayed cleanly, so the only changes here are the pin
-            itself and any patches whose context lines moved.
+            Every overlay file merged cleanly, so the only changes here are the pin itself
+            and whichever overlay files upstream edited underneath us.
 
-            Before merging, check that the diff to `patches/` is context shift only. If a
-            patch has changed in substance, upstream reworked the code underneath it and
-            it is worth reading properly rather than trusting the three way merge.
+            Read the diff to `overlay/` before merging. A clean three way merge means git
+            found no overlapping lines, not that the result is right. If upstream reworked
+            the code around one of our changes, the merge succeeds and the result is
+            nonsense, and this is the only place anybody looks at it.
 
             Note that pull requests opened by the workflow token do not themselves start
             CI runs. Close and reopen this one, or push an empty commit, to get a result.
@@ -110,7 +111,7 @@ jobs:
           # script, which is the standard way to keep workflow expressions out of shell.
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title="Upstream drift: the patch series no longer applies"
+          title="Upstream drift: the overlay no longer merges"
           python3 scripts/drift-body.py "$BEFORE" "$RUN_URL" bump.log > drift-body.md
 
           existing="$(gh issue list --label upstream-drift --state open --limit 1 --json number --jq '.[0].number')"
