@@ -161,6 +161,32 @@ single_version_override(
     ],
 )
 
+# curl is the second of the class described above and the first one where it is not
+# just copts. Its Windows linkopts arm says -DEFAULTLIB:ws2_32.lib, which the clang
+# driver parses as -D EFAULTLIB:ws2_32.lib, a macro definition. That is valid, so
+# there is no error and no diagnostic, the library simply never reaches the linker.
+# A flag that silently means something else is worse than one that fails, so it is
+# worth knowing that this shape exists before spending a day on a missing symbol.
+single_version_override(
+    module_name = "curl",
+    patch_strip = 1,
+    patches = [
+        "//bazel/public-patches:curl_gnu_driver_flags.patch",
+    ],
+)
+
+# boringssl is the third, and it has one of each: /std:c11 in the copts, which fails
+# loudly, and -defaultlib: in the linkopts, which fails silently. It arrives here as
+# a transitive dependency rather than a bazel_dep, but a single_version_override in
+# the root module still reaches it.
+single_version_override(
+    module_name = "boringssl",
+    patch_strip = 1,
+    patches = [
+        "//bazel/public-patches:boringssl_gnu_driver_flags.patch",
+    ],
+)
+
 # Expose the :toml++-src target (header-only impl) to external repos
 # (consumed by @nixl_upstream). The BCR patch creates the target but leaves
 # its visibility restricted.
