@@ -13,12 +13,14 @@ edit	3e759c983d077baf7c997c07f8322a426a02a2e8	BUILD.bazel
 edit	ad5d85aa897cbf31a7767237adb8dba2aa3570c3	Config/include/Config/Version.h
 edit	6acb9727246db7b58efcfdfe27ac2338d5c7d015	Config/include/GeneratedVersion.h.tmpl
 edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
+edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 edit	9958fb19c8e9b86a4636b088a591b381170417fe	Mojo/tools/mojo/DriverOptions.td
 edit	e3376e74de03f0d0b2b99e312639ba548d060ec7	Mojo/tools/mojo/mojo.cpp
 edit	ed0961200dc215798abd226500fb6652adab461c	Support/BUILD.bazel
 edit	586cd6589ac54d9adfa57362c41dc733abe08071	bazel/config.bzl
 edit	dc4d8098c3daecda2047b418956f8994cedd95ac	bazel/internal/BUILD.bazel
 edit	a91387bbbd00ab37c6ab446ba5ece42de45e3042	bazel/internal/cc-toolchain/BUILD.bazel
+new	-	bazel/internal/cc-toolchain/windows_sysroot_repository.bzl
 edit	edb67a035194ce0b99f28058a68828d923170991	bazel/internal/config.bzl
 edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.bazel
 edit	cedbc002df2a280bad77f4de603a073449fe858a	bazel/internal/modular_versioned_expand_template.bzl
