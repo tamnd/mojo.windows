@@ -63,14 +63,33 @@ cc_sysroot(
 # something to both halves of the driver. A -L on a compile is an argument clang never
 # reads, and this toolchain builds with -Werror=unused-command-line-argument, so putting
 # all seven on every action turns every compile into three errors about the linker.
+# Clang's own headers are in here with the sysroot's, and first, which is load bearing
+# rather than tidy. The MSVC CRT ships its own xmmintrin.h and immintrin.h, and they
+# define __m128 as a union of arrays, the way cl wants it. Clang's define it as a vector
+# type, and everything clang compiles expects the vector, so LLVM's own libc does
+# ymm[0] on one and gets "type '__m128' (aka 'union __m128') does not provide a
+# subscript operator". Whichever include directory comes first wins, and the sysroot
+# used to.
+#
+# clang-cl solves this with -imsvc, which sorts the MSVC directories after the builtin
+# ones no matter where they appear. The GNU driver has no such flag, it rejects -imsvc
+# outright, so the order has to be written by hand. That is also why these are one
+# cc_args target and not two: split across two targets the order would depend on the
+# order of the list in the cc_toolchain select below, which is a long way from here and
+# reads like it does not matter.
 cc_args(
     name = "windows_sysroot_headers",
     actions = [
         "@rules_cc//cc/toolchains/actions:compile_actions",
         "@rules_cc//cc/toolchains/actions:link_actions",
     ],
-    allowlist_include_directories = ["@sysroot-windows//sysroot:root"],
+    allowlist_include_directories = [
+        "@sysroot-windows//sysroot:root",
+        "//bazel/internal/cc-toolchain/tools:resource_directory",
+    ],
     args = [
+        "-isystem",
+        "{resource_dir}/include",
         "-isystem",
         "{root}/crt/include",
         "-isystem",
@@ -80,8 +99,14 @@ cc_args(
         "-isystem",
         "{root}/sdk/include/shared",
     ],
-    data = ["@sysroot-windows//sysroot:directory"],
-    format = {"root": "@sysroot-windows//sysroot:root"},
+    data = [
+        "@sysroot-windows//sysroot:directory",
+        "//bazel/internal/cc-toolchain/tools:resource_directory_filegroup",
+    ],
+    format = {
+        "resource_dir": "//bazel/internal/cc-toolchain/tools:resource_directory_filegroup",
+        "root": "@sysroot-windows//sysroot:root",
+    },
 )
 
 cc_args(
