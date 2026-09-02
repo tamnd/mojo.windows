@@ -235,16 +235,47 @@ alias(
 )
 
 # A target platform, unlike the ones below it, which are execution platforms for
-# remote workers. Nothing builds for it yet. It exists so that a Windows targeted
-# build can be asked for at all, with --platforms=//:windows-x86_64-platform, and
-# so that the OS keyed selects in the tree have something to resolve against.
-# Execution stays wherever the build is being run, so this cross compiles.
+# remote workers. It is what --platforms=//:windows-x86_64-platform names, and it
+# is what the OS keyed selects in the tree resolve against. Execution stays
+# wherever the build is being run, so this cross compiles.
 platform(
     name = "windows-x86_64-platform",
     constraint_values = [
         "@platforms//cpu:x86_64",
         "@platforms//os:windows",
     ],
+)
+
+# Every test rule in Bazel 8 depends on a default test toolchain whose only job is to
+# force the execution platform to satisfy the target platform's constraints, so that
+# Bazel never tries to run a Windows test binary on a Linux machine. That is a good
+# default, and it is why 4,239 test targets fail analysis the moment you ask for
+# --platforms=//:windows-x86_64-platform from a Linux host. No registered execution
+# platform carries @platforms//os:windows, so nothing matches, and the error is the
+# long no_match_error out of @bazel_tools//tools/test rather than anything of ours.
+#
+# Registering the Windows platform as an execution platform would also silence it,
+# and it would be a lie, because this machine cannot run a PE binary. This says the
+# smaller true thing instead: for a Windows target, a test may be analyzed, and it
+# carries no constraint on where the test action would run. Whether it can run is a
+# separate question, and the answer is no until there is a Windows runner and the
+# test wrappers stop being bash scripts, which are #24 and #22. Analysis is what M1
+# is about.
+#
+# The empty toolchain is the one @bazel_tools declares for exactly this purpose. The
+# toolchain type ignores whatever a toolchain provides and only looks at the
+# constraints, so there is nothing to write here.
+#
+# Ours has to be considered before @bazel_tools//tools/test:default_test_toolchain,
+# and it is, because MODULE.bazel registers it from the root module and the root
+# module comes first. Linux and macOS never reach it at all, since
+# target_compatible_with rules it out before the exec platform is looked at.
+toolchain(
+    name = "windows_test_toolchain",
+    target_compatible_with = ["@platforms//os:windows"],
+    toolchain = "@bazel_tools//tools/test:empty_toolchain",
+    toolchain_type = "@bazel_tools//tools/test:default_test_toolchain_type",
+    visibility = ["//visibility:public"],
 )
 
 platform(
