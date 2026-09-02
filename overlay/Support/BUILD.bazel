@@ -455,6 +455,8 @@ modular_cc_library(
     hdrs = glob(["include/Support/Threading/*.h"]),
     deps = [
         ":Base",
+        # For HWInfo.cpp, which reads the MAC addresses out of iphlpapi.
+        ":WindowsHeader",
         "@llvm-project//llvm:Support",
     ],
 )
