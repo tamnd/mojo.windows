@@ -48,9 +48,13 @@ info "this accepts the Visual Studio licence on this machine, see docs/building.
 
 # Defaults are already x86_64 and desktop, which is what we want, but they are spelled out
 # because the defaults are xwin's rather than ours and a later version could change them.
-"$WORK/xwin" --accept-license splat \
+# They go before the subcommand and not after it, which xwin will tell you about only if
+# you get it wrong.
+"$WORK/xwin" \
+  --accept-license \
   --arch x86_64 \
   --variant desktop \
+  splat \
   --output "$OUTPUT"
 
 [ -d "$OUTPUT/crt" ] && [ -d "$OUTPUT/sdk" ] || die "xwin finished but $OUTPUT does not look like a splat output"
