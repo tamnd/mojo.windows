@@ -4,9 +4,11 @@ Estimates are in engineer weeks for one experienced systems person who is comfor
 
 The dominant uncertainty is not any single item. It is the long tail of small breakages that only become visible once the blocker in front of them clears, and that is unmeasurable in advance. Expect the first `hello.exe` to take longer than a naive schedule says and everything after it to go faster.
 
-## M0, fork established, half a week
+Each milestone has a tracking issue holding the checklist of work under it, so live progress lives there rather than in this file. They are [#47 through #55](https://github.com/tamnd/mojo.windows/issues?q=is%3Aissue+label%3Atype%2Fepic), one per milestone, and the [milestones page](https://github.com/tamnd/mojo.windows/milestones) has the same thing as percentages.
 
-Get the repository and the pin set up, confirm a clean upstream Linux build and a green upstream test suite, and put the fork identification and the disclaimer in place. That green Linux build is the baseline every later change gets measured against, so it is worth doing properly rather than assuming.
+## M0, upstream pin established, half a week
+
+Get the repository and the pin set up, confirm a clean upstream Linux build and a green upstream test suite, and put the unofficial build identification and the disclaimer in place. That green Linux build is the baseline every later change gets measured against, so it is worth doing properly rather than assuming.
 
 Also do the boring prerequisites now, specifically making sure the Windows test machine has enough free disk for a Bazel and LLVM build. It costs an hour and it removes a dependency that would otherwise silently stall M6.
 
@@ -70,7 +72,7 @@ Not a schedule item, a posture. When Modular and Microsoft ship official Windows
 
 | Milestone | Estimate | Cumulative | Gate |
 | --- | --- | --- | --- |
-| M0 fork established | 0.5w | 0.5w | Linux build green from the pin |
+| M0 upstream pin established | 0.5w | 0.5w | Linux build green from the pin |
 | M1 analysis passes | 1.5 to 2.5w | 2 to 3w | no select failures |
 | M2 C++ compiles | 3 to 5w | 5 to 8w | mojo.exe links |
 | M3 hello.exe | 2 to 4w | 7 to 12w | ABI suite green |
