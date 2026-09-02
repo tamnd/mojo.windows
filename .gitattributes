@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# Patches are byte exact. Never let git touch their line endings.
+patches/*.patch -text
+
+# Windows native scripts keep CRLF so they run from cmd.exe unmodified.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.zip binary

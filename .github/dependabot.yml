@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Actions are pinned to commit SHAs, which is the right thing for supply chain
+  # reasons but means nothing tells you when they move. This does.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'build'
+    labels:
+      - area/build
+      - type/chore
+    groups:
+      actions:
+        patterns: ['*']

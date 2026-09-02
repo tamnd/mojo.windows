@@ -1,0 +1,45 @@
+name: Bug
+description: Something in this project is broken.
+title: 'bug: '
+labels: ['type/bug']
+body:
+  - type: markdown
+    attributes:
+      value: >
+        If it reproduces on Linux or macOS with plain upstream Mojo then it is an upstream
+        bug and belongs on modular/modular. This form is for problems introduced by our
+        patches, specific to the Windows target, or in our build and release tooling.
+  - type: input
+    id: pin
+    attributes:
+      label: Upstream pin
+      description: The tag and commit from upstream.lock.
+      placeholder: mojo/v1.0.0 b4497b7ce9ba96331c72c637ad41b44bab374f33
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Build host
+      description: OS and architecture of the machine running the build. No host names please.
+      placeholder: Ubuntu 24.04 x86_64
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      render: shell
