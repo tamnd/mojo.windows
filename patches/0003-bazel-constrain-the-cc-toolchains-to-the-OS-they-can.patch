@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tamnd <tamnd@users.noreply.github.com>
+Date: Wed, 2 Sep 2026 22:44:42 +0800
+Subject: bazel: constrain the cc toolchains to the OS they can actually target
+
+None of the three registered `toolchain()` rules had a `target_compatible_with`,
+so as far as toolchain resolution is concerned each of them is willing to build
+for any target platform at all. That has never mattered, because the only target
+platforms in the tree are the ones the toolchains are for.
+
+It starts mattering the moment a fourth OS exists. A build with a Windows target
+platform on a Linux host resolves `linux-x86_64-toolchain`, because its execution
+constraints match and it makes no claim about targets, and then compiles happily
+with a Linux sysroot and Linux link flags. The result is ELF objects from a build
+that was asked for PE, with no error anywhere. A missing toolchain is a two line
+error message that names the platform. A wrong toolchain is a day.
+
+Constrain by OS only. The two Linux entries already cross compile between Linux
+CPUs, using the execution platform's clang against the target platform's sysroot,
+which is what the `//:linux_aarch64` and `//:linux_x86_64` arms of the sysroot
+`select()` are doing, so adding a CPU constraint here would take away something
+that works today.
+
+Nothing changes for any build that exists now. Both Linux entries still match a
+Linux target and resolution still picks between them on the execution platform,
+exactly as before.
+
+Signed-off-by: tamnd <1218621+tamnd@users.noreply.github.com>
+---
+ bazel/internal/cc-toolchain/BUILD.bazel | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/bazel/internal/cc-toolchain/BUILD.bazel b/bazel/internal/cc-toolchain/BUILD.bazel
+index a91387bbbd..e3d2d3d2f6 100644
+--- a/bazel/internal/cc-toolchain/BUILD.bazel
++++ b/bazel/internal/cc-toolchain/BUILD.bazel
+@@ -164,6 +164,10 @@ toolchain(
+         "@platforms//os:linux",
+     ],
+     tags = [TOP_LEVEL_TAG],  # Used from MODULE.bazel
++    # Constrained by OS and not by CPU. These toolchains already cross compile
++    # between Linux CPUs, using the execution platform's clang against the target
++    # platform's sysroot, and constraining the CPU here would take that away.
++    target_compatible_with = ["@platforms//os:linux"],
+     toolchain = ":linux-aarch64_clang_toolchain",
+     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+ )
+@@ -175,6 +179,7 @@ toolchain(
+         "@platforms//os:linux",
+     ],
+     tags = [TOP_LEVEL_TAG],  # Used from MODULE.bazel
++    target_compatible_with = ["@platforms//os:linux"],
+     toolchain = ":linux-x86_64_clang_toolchain",
+     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+ )
+@@ -186,6 +191,7 @@ toolchain(
+         "@platforms//os:macos",
+     ],
+     tags = [TOP_LEVEL_TAG],  # Used from MODULE.bazel
++    target_compatible_with = ["@platforms//os:macos"],
+     toolchain = ":macos_clang_toolchain",
+     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+ )
