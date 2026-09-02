@@ -58,6 +58,20 @@ It fetches `xwin`, checks it against a pinned hash, and has it pull the MSVC CRT
 
 Doing nothing useful is the designed behaviour rather than a gap. With the variable unset the repository is empty but still valid, so analysis of a Windows configured build works on any machine and only a real compile action fails. That is the same trick the macOS sysroot rule uses, and it is what lets the cross build lane check the build graph on a runner that has no business downloading Microsoft headers.
 
+### When it fails
+
+Two failures are worth naming because neither error message points at the cause.
+
+`Error: HTTP GET request for https://aka.ms/vs/17/release/channel failed, io: Network unreachable` means the machine has an IPv6 default route that does not work. The first request goes to `aka.ms`, which is IPv4 only, and succeeds. The redirect lands on a CDN host that has AAAA records, and xwin's HTTP client picks the IPv6 address and gives up when it fails. There is no happy eyeballs fallback, which is why `curl` on the same host works and this does not. WSL2 guests hit this often. Turn IPv6 off for the run and back on afterwards:
+
+```sh
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+./scripts/windows-sysroot.sh
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
+```
+
+`Error: failed to retrieve ... after N tries due to I/O failures reading the response body` is an ordinary dropped connection partway through a few hundred files. The script already passes `--http-retry 5`, so if you are seeing this the link is bad rather than unlucky. Run it again, the download cache in `.xwin` is kept and it picks up where it stopped.
+
 ### Why the script is separate from the build
 
 Running `xwin` accepts the Visual Studio license on the machine it runs on. A build system that quietly accepted a license for you the first time you typed `bazel build` would be doing something with legal weight as a side effect of something without any, so this is a script you run on purpose, once, and it says what it is doing while it does it.

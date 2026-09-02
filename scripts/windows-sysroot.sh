@@ -50,10 +50,18 @@ info "this accepts the Visual Studio licence on this machine, see docs/building.
 # because the defaults are xwin's rather than ours and a later version could change them.
 # They go before the subcommand and not after it, which xwin will tell you about only if
 # you get it wrong.
+#
+# --http-retry defaults to 0, which is a strange default for something that pulls a few
+# hundred files and around 630 MB off a CDN. One dropped connection and the whole run
+# ends. Five is enough that a normal bad minute does not cost you the download, and the
+# timeout goes up for the same reason, because 60 seconds for a single file is tight on
+# a slow link.
 "$WORK/xwin" \
   --accept-license \
   --arch x86_64 \
   --variant desktop \
+  --http-retry 5 \
+  --timeout 180s \
   splat \
   --output "$OUTPUT"
 
