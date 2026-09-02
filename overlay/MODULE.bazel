@@ -36,6 +36,10 @@ register_toolchains(
     "@mojo_toolchains//...",
     "//bazel/internal/cc-toolchain:all",
     "//bazel/internal:mojo_copts_toolchain",
+    # Windows targets only, and it has to be registered from the root module so that
+    # it is considered before the one @bazel_tools//tools/test registers. The comment
+    # on the target in the root BUILD file says what it is for.
+    "//:windows_test_toolchain",
 )
 
 llvm_source = use_extension("//bazel/public-patches:llvm_source.bzl", "llvm_source")
