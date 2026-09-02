@@ -1,0 +1,11 @@
+{
+  "$comment": "Pinned upstream. Everything in patches/ is written against exactly this commit. Do not edit by hand, use scripts/bump-upstream.sh.",
+  "repo": "https://github.com/modular/modular.git",
+  "ref": "refs/tags/mojo/v1.0.0",
+  "tag": "mojo/v1.0.0",
+  "commit": "b4497b7ce9ba96331c72c637ad41b44bab374f33",
+  "pinned_at": "2026-09-02",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "audit_commit": "9aba62be844d73b574a4283a1a8ce760f9843134",
+  "audit_note": "The source audit behind docs/ was done against audit_commit, which was main at the time. Line numbers quoted in docs and issues are relative to that commit and drift. File paths and quoted code are the durable part."
+}

@@ -1,0 +1,112 @@
+name: Release
+
+# Until M5 there are no binaries, so a release is the patch series plus the documents,
+# which is genuinely the useful artifact right now. The provenance attestation and the
+# checksums are wired up from the start so that the first binary release does not have
+# to invent them under time pressure.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Work out the version
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ -n "${{ inputs.tag }}" ] && version="${{ inputs.tag }}" && version="${version#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # A release must say which upstream commit it is against. Without that a bug
+          # report against it is close to useless.
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          d = json.load(open("upstream.lock"))
+          print(f"Upstream pin: `{d['tag']}` (`{d['commit']}`)")
+          PY
+
+      - name: Build the archive
+        run: |
+          name="mojo-windows-patches-${{ steps.meta.outputs.version }}"
+          mkdir -p "dist/$name"
+          cp -r patches scripts docs upstream.lock README.md LICENSE NOTICE "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && zip -qr "$name.zip" "$name")
+          rm -rf "dist/$name"
+          (cd dist && sha256sum ./*.tar.gz ./*.zip > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: 'dist/*.{tar.gz,zip}'
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-artifacts
+          path: dist/
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-artifacts
+          path: dist
+
+      - uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS
+          body: |
+            Unofficial community build. Not affiliated with Modular or Qualcomm.
+
+            Verify what you downloaded before using it:
+
+            ```sh
+            sha256sum -c SHA256SUMS
+            gh attestation verify <file> --repo ${{ github.repository }}
+            ```
+
+            Releases are drafted rather than published automatically. Fill in what works
+            and what does not before you publish, because that list is the most useful
+            part of the notes.

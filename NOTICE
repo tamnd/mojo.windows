@@ -1,0 +1,24 @@
+mojo.windows
+Copyright 2026 the mojo.windows contributors
+
+This product includes software developed as part of the Modular repository
+(https://github.com/modular/modular), Copyright Modular Inc., licensed under
+the Apache License, Version 2.0 with LLVM Exceptions.
+
+This repository does not vendor upstream source. It distributes patches that
+apply to a pinned upstream commit, recorded in upstream.lock. Patches are
+derivative works of the upstream files they modify and carry the same license.
+
+TRADEMARKS
+
+"Mojo" and "Modular" are trademarks of Modular Inc. "Windows", "Visual Studio"
+and "MSVC" are trademarks of Microsoft Corporation. Use of these names in this
+repository is nominative, that is, it identifies the software this project
+patches and the platform it targets. It does not imply any affiliation with,
+sponsorship by, or endorsement from Modular Inc., Qualcomm, or Microsoft
+Corporation, and no such affiliation exists.
+
+The Apache License grants no trademark rights. This project therefore does not
+publish any package under the name "mojo", "mojo-lang", "modular" or "max" on
+any package registry, and any binary it produces identifies itself as an
+unofficial build.

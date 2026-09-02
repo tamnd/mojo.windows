@@ -1,0 +1,27 @@
+# Upstream checkout, created by scripts/sync.sh. Never committed.
+/.upstream/
+
+# Build output
+/build/
+/dist/
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.so
+*.dylib
+*.a
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/

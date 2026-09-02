@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Bug in Mojo itself
+    url: https://github.com/modular/modular/issues
+    about: If it reproduces on Linux or macOS with plain upstream Mojo, it belongs upstream, not here.
+  - name: Security report
+    url: https://github.com/tamnd/mojo.windows/security/advisories/new
+    about: Report vulnerabilities privately. Please do not open a public issue.
+  - name: Design documents
+    url: https://github.com/tamnd/mojo.windows/tree/main/docs
+    about: Read these before filing, most of the known work is already written down.
