@@ -25,3 +25,8 @@
 __pycache__/
 *.pyc
 .venv/
+
+# Windows sysroot and the xwin binary that makes it, both created by
+# scripts/windows-sysroot.sh. Large, machine specific, and not redistributable.
+/.windows-sysroot/
+/.xwin/
