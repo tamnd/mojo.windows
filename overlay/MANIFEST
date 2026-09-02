@@ -42,5 +42,6 @@ edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.baze
 edit	cedbc002df2a280bad77f4de603a073449fe858a	bazel/internal/modular_versioned_expand_template.bzl
 new	-	bazel/public-patches/boringssl_gnu_driver_flags.patch
 new	-	bazel/public-patches/curl_gnu_driver_flags.patch
+new	-	bazel/public-patches/llvm_windows_stack_flag.patch
 new	-	bazel/public-patches/rules_mypy_types_exec.patch
 new	-	bazel/public-patches/zlib_ng_gnu_driver_copts.patch
