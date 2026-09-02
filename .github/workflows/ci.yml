@@ -38,10 +38,13 @@ jobs:
 
       - name: editorconfig
         run: |
-          curl -fsSL -o ec.tar.gz \
-            https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v3.3.0/ec-linux-amd64.tar.gz
-          tar xzf ec.tar.gz
-          ./bin/ec-linux-amd64 -exclude '^(LICENSE|patches/.*\.patch)$'
+          # Unpacked into a scratch directory, not here. The release tarball carries its
+          # own README.md, LICENSE and CHANGELOG.md at the root, so extracting in place
+          # drops them on top of ours and the checker then lints the tool's files.
+          mkdir -p "$RUNNER_TEMP/ec"
+          curl -fsSL https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v3.3.0/ec-linux-amd64.tar.gz \
+            | tar xz -C "$RUNNER_TEMP/ec"
+          "$RUNNER_TEMP/ec/bin/ec-linux-amd64" -exclude '^(LICENSE|patches/.*\.patch)$'
 
   house-style:
     name: House style
@@ -70,7 +73,7 @@ jobs:
             echo "::error::key material is in the tree"; fail=1
           fi
           if [ -n "$PRIVATE_HOST_PATTERN" ] && grep -rniE "$PRIVATE_HOST_PATTERN" \
-               --exclude-dir=.git --exclude-dir=.upstream . ; then
+            --exclude-dir=.git --exclude-dir=.upstream . ; then
             echo "::error::private infrastructure is named in the tree"; fail=1
           fi
           exit $fail
