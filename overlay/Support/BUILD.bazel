@@ -143,6 +143,8 @@ modular_cc_library(
     srcs = ["lib/BinaryID.cpp"],
     hdrs = ["include/Support/BinaryID.h"],
     deps = [
+        # For the PE branch, which reads the CodeView GUID out of the mapped image.
+        ":WindowsHeader",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -302,7 +304,14 @@ modular_cc_library(
 
 modular_cc_library(
     name = "NixlPluginDir",
-    srcs = ["lib/NixlPluginDir.cpp"],
+    # Both files are always in srcs. They carry opposite _WIN32 guards, so exactly
+    # one of them contributes anything, and clang-tidy still gets the one test
+    # target per source file it builds while the package is loading, which a
+    # select() in srcs cannot give it.
+    srcs = [
+        "lib/NixlPluginDir.cpp",
+        "lib/NixlPluginDirUnsupported.cpp",
+    ],
     hdrs = ["include/Support/NixlPluginDir.h"],
     # Single source of truth for per-vendor NIXL plugin flavor selection,
     # shared by max._core (runtime) and the MLRT NIXL unittests.
@@ -446,6 +455,8 @@ modular_cc_library(
     hdrs = glob(["include/Support/Threading/*.h"]),
     deps = [
         ":Base",
+        # For HWInfo.cpp, which reads the MAC addresses out of iphlpapi.
+        ":WindowsHeader",
         "@llvm-project//llvm:Support",
     ],
 )
