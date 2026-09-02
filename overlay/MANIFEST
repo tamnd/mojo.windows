@@ -31,3 +31,4 @@ edit	edb67a035194ce0b99f28058a68828d923170991	bazel/internal/config.bzl
 edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.bazel
 edit	cedbc002df2a280bad77f4de603a073449fe858a	bazel/internal/modular_versioned_expand_template.bzl
 new	-	bazel/public-patches/rules_mypy_types_exec.patch
+new	-	bazel/public-patches/zlib_ng_gnu_driver_copts.patch

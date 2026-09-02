@@ -45,6 +45,14 @@ The good news here is that this toolchain is built on the modern `rules_cc` Star
 
 **Dependencies that have to be gated out rather than ported.** tcmalloc depends on glibc restartable sequences and Linux NUMA topology and has no Windows port, so it is replaced with mimalloc. libfabric, nixl, uccl, ucx, rocshmem and nvshmem are Linux and GPU cluster specific and are excluded. Crashpad is portable and upstream supports Windows properly, it just is not wired up here. grpc, protobuf, abseil, opentelemetry, asio, fmt, zlib-ng, zstd and the rest are fine as they are.
 
+### A trap worth recognising early: the OS is not the driver
+
+A third party BUILD file that writes `select({"@platforms//os:windows": ["/wd4127", ...]})` is not really keying on the operating system. It is keying on the driver, and it is assuming that a Windows target implies `cl` or `clang-cl`. For everyone else that assumption holds. For us it does not, because we deliberately use clang's GNU driver with an MSVC target, for the reasons two paragraphs up.
+
+The GNU driver reads a leading slash as a path, so the first symptom is `clang: error: no such file or directory: '/wd4127'`, which reads like a missing file and is really a missing translation. zlib-ng was the first one of these. There will be more, and they will all look like that.
+
+Two things make them worth a moment rather than a reflex. `--per_file_copt` cannot help, whatever it looks like, because it only ever adds flags and the problem is a flag that is already there. And the Windows arm of one of these selects is usually missing more than the suppressions: zlib-ng's was also missing the `-std=c11` that both other arms got, because whoever wrote it was thinking about cl, which does not need it. Read the whole arm rather than just deleting the slashes.
+
 ## The Windows sysroot
 
 Run this once per machine, and pass Bazel the flag it prints:
