@@ -51,12 +51,44 @@ filegroup(
 )
 """
 
+# The four include trees again, gathered under one directory so that something wanting
+# only headers can ask for only headers. It is a package of its own rather than a target
+# in the one above because a directory target is rooted at its own package, and there is
+# no way to say "the crt/include part of this" without either a subdirectory target,
+# which fails at analysis time when the sysroot is not configured and the subdirectory
+# does not exist, or a second package, which does not.
+#
+# The names here are what a compiler would call these header sets and not the paths they
+# came from, since nothing downstream includes through this directory. It exists to be
+# walked.
+_HEADER_DIRS = {
+    "crt": "crt/include",
+    "shared": "sdk/include/shared",
+    "ucrt": "sdk/include/ucrt",
+    "um": "sdk/include/um",
+}
+
+_HEADERS_BUILD = """\
+load("@bazel_skylib//rules/directory:directory.bzl", "directory")
+
+directory(
+    name = "headers",
+    srcs = glob(
+        ["**"],
+        exclude = ["BUILD.bazel"],
+        allow_empty = True,
+    ),
+    visibility = ["//visibility:public"],
+)
+"""
+
 def _empty(rctx, reason):
     rctx.file("sysroot/REASON", reason + "\n")
     rctx.file("sysroot/BUILD.bazel", _BUILD_TEMPLATE.format(
         includes = _INCLUDES,
         srcs = "[]",
     ))
+    rctx.file("headers/BUILD.bazel", _HEADERS_BUILD)
 
 def _windows_sysroot_repository_impl(rctx):
     configured = rctx.getenv(_ENV_VAR)
@@ -84,6 +116,14 @@ def _windows_sysroot_repository_impl(rctx):
         includes = _INCLUDES,
         srcs = "glob(_INCLUDES, allow_empty = True)",
     ))
+
+    for name, path in _HEADER_DIRS.items():
+        target = root
+        for part in path.split("/"):
+            target = target.get_child(part)
+        rctx.symlink(target, "headers/" + name)
+
+    rctx.file("headers/BUILD.bazel", _HEADERS_BUILD)
 
 windows_sysroot_repository = repository_rule(
     implementation = _windows_sysroot_repository_impl,
