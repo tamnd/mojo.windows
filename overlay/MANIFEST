@@ -10,6 +10,7 @@
 # pin modular/v25.7.0-29742-g9aba62be84
 
 edit	f34e1d3277d9da00bfc05129aadc9d077d2c8437	AsyncRT/include/AsyncRT/Runtime/Globals/Globals.h
+edit	503e13d1963e0cea956b5a564c244d947af49744	AsyncRT/lib/Runtime/Globals/Globals.cpp
 edit	02b22370dd0a493fe9d83ae28dd9708a654f297f	AsyncRT/lib/Support/Semaphore.cpp
 edit	56ced06d65d8d56b04f2f6b3fce0b98423a0dcfc	AsyncRT/lib/Support/ThreadAffinity.cpp
 edit	3e759c983d077baf7c997c07f8322a426a02a2e8	BUILD.bazel
@@ -54,5 +55,6 @@ edit	5c97c045b3cd8aa6e59aa4706665ee70e85ac8ca	bazel/public-patches/crashpad.BUIL
 new	-	bazel/public-patches/curl_gnu_driver_flags.patch
 new	-	bazel/public-patches/google_benchmark_gnu_driver_flags.patch
 new	-	bazel/public-patches/llvm_windows_stack_flag.patch
+new	-	bazel/public-patches/mimalloc.BUILD
 new	-	bazel/public-patches/rules_mypy_types_exec.patch
 new	-	bazel/public-patches/zlib_ng_gnu_driver_copts.patch
