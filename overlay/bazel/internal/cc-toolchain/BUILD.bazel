@@ -297,46 +297,44 @@ toolchain(
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
 
-# Windows targets, cross compiled, one registration per machine you might be sitting at.
+# Windows target, cross compiled from Linux x86_64, and only from there.
 #
 # The name of a cc_toolchain above says which machine runs it and not what it produces.
 # That was already true before Windows existed here, which is what the comment on the
-# aarch64 registration is getting at, and it is what makes this cheap: every select
+# aarch64 registration is getting at, and it is what makes this cheap. Every select
 # inside those cc_toolchain definitions is keyed on the target platform, so pointing a
-# second toolchain() at the same cc_toolchain with a Windows target gets the Windows
-# flags without duplicating anything.
+# second toolchain() at an existing cc_toolchain with a Windows target picks up the
+# Windows flags without duplicating anything.
 #
-# Three registrations rather than one because the alternative is that a Windows build
-# only resolves on a Linux x86_64 machine, and then nobody can even run analysis from a
-# laptop. Every action still runs on the host, so the bash toolchain drivers are
+# Only one execution platform, and that is a real limitation rather than a decision to
+# be tidy. Several selects in this toolchain are keyed on the target platform but mean
+# the execution platform: which clang tarball to take the resource directory and the
+# builtin headers from, for instance, in tools/BUILD.bazel. Those work today because
+# for a Linux or macOS target the two happen to agree. They stop agreeing the moment
+# you cross compile to a third OS, and a target keyed select cannot tell macOS host
+# from Linux host, so it has to be pinned to one host and Linux x86_64 is the one the
+# project builds on. Registering macOS as well would not fail, it would quietly hand a
+# macOS clang the Linux clang's resource directory, which is worse.
+#
+# Lifting that needs execution platform keyed config settings, which do not exist here
+# yet. Until then, cross compile from Linux x86_64.
+#
+# Execution still happens on the host either way, so the bash toolchain drivers are
 # untouched and none of this is a step toward building on Windows, which is M6.
-[
-    toolchain(
-        name = "windows-x86_64-from-{}-toolchain".format(exec_platform),
-        exec_compatible_with = exec_constraints,
-        tags = [TOP_LEVEL_TAG],  # Used from MODULE.bazel
-        target_compatible_with = [
-            "@platforms//cpu:x86_64",
-            "@platforms//os:windows",
-        ],
-        toolchain = ":{}_clang_toolchain".format(exec_platform),
-        toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
-    )
-    for exec_platform, exec_constraints in {
-        "linux-x86_64": [
-            "@platforms//cpu:x86_64",
-            "@platforms//os:linux",
-        ],
-        "linux-aarch64": [
-            "@platforms//cpu:aarch64",
-            "@platforms//os:linux",
-        ],
-        "macos": [
-            "@platforms//cpu:aarch64",
-            "@platforms//os:macos",
-        ],
-    }.items()
-]
+toolchain(
+    name = "windows-x86_64-toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    tags = [TOP_LEVEL_TAG],  # Used from MODULE.bazel
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+    ],
+    toolchain = ":linux-x86_64_clang_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
 
 # gazelle:ignore
 cc_library(name = "empty_lib")
