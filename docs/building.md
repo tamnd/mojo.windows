@@ -47,14 +47,16 @@ The good news here is that this toolchain is built on the modern `rules_cc` Star
 
 ## The Windows sysroot
 
-Run this once per machine, and export what it prints:
+Run this once per machine, and pass Bazel the flag it prints:
 
 ```
 ./scripts/windows-sysroot.sh
-export MOJO_WINDOWS_SYSROOT=/path/it/printed
+./bazelw build --config=build-mojo --repo_env=MOJO_WINDOWS_SYSROOT=/path/it/printed ...
 ```
 
 It fetches `xwin`, checks it against a pinned hash, and has it pull the MSVC CRT and the Windows SDK from Microsoft's CDN into a `crt` and an `sdk` directory. About 630 MB for the x86_64 desktop variant, and a couple of minutes. Bazel picks it up through the `sysroot-windows` repository rule, which reads `MOJO_WINDOWS_SYSROOT` and does nothing useful without it.
+
+It has to be `--repo_env` and not an exported shell variable. Upstream sets `--experimental_strict_repo_env` in `bazel/internal/common.bazelrc`, so a repository rule sees only what `--repo_env` hands it and nothing else from your environment. Exporting the variable and expecting Bazel to notice gets you the empty repository, and the empty repository is designed to be quiet, so what you actually see is every Windows header missing at once.
 
 Doing nothing useful is the designed behaviour rather than a gap. With the variable unset the repository is empty but still valid, so analysis of a Windows configured build works on any machine and only a real compile action fails. That is the same trick the macOS sysroot rule uses, and it is what lets the cross build lane check the build graph on a runner that has no business downloading Microsoft headers.
 

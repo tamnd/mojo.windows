@@ -1,0 +1,115 @@
+load("@rules_cc//cc/toolchains:tool.bzl", "cc_tool")
+load("//bazel:config.bzl", "TOP_LEVEL_TAG")
+load(":builtin_module_map.bzl", "builtin_module_map")
+load(":tools.bzl", "declare_tools")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_tool(
+    name = "multi-platform-clang",
+    src = ":multi-platform-clang.sh",
+    data = [
+        "@clang-linux-aarch64//:bin/clang",
+        "@clang-linux-x86_64//:bin/clang",
+        "@clang-macos//:bin/clang",
+    ],
+    tags = ["manual"],
+)
+
+cc_tool(
+    name = "multi-platform-clang++",
+    src = ":multi-platform-clang++.sh",
+    data = [
+        "@clang-linux-aarch64//:bin/clang++",
+        "@clang-linux-x86_64//:bin/clang++",
+        "@clang-macos//:bin/clang++",
+    ],
+    tags = ["manual"],
+)
+
+cc_tool(
+    name = "multi-platform-linker_driver",
+    src = ":linker-driver.sh",
+    data = [
+        "@clang-linux-aarch64//:bin/clang",
+        "@clang-linux-aarch64//:bin/clang++",  # symlink to clang
+        "@clang-linux-aarch64//:bin/dsymutil",
+        "@clang-linux-aarch64//:ld",
+        "@clang-linux-x86_64//:bin/clang",
+        "@clang-linux-x86_64//:bin/clang++",  # symlink to clang
+        "@clang-linux-x86_64//:bin/dsymutil",
+        "@clang-linux-x86_64//:ld",
+        "@clang-macos//:bin/clang",
+        "@clang-macos//:bin/clang++",  # symlink to clang
+        "@clang-macos//:bin/dsymutil",
+        "@clang-macos//:ld",
+    ],
+    tags = [
+        "manual",
+        # HACK: until our lld contains this fix https://github.com/llvm/llvm-project/commit/9234066476aa82cfac3cee564883a3124df4584e
+        # This tag is meaningless to us but changes this behavior https://github.com/bazelbuild/bazel/blob/4c664d9ba50e7d7aea66a0547a5bac3ca8d264e5/src/main/starlark/builtins_bzl/common/cc/link/finalize_link_action.bzl#L363
+        "requires_darwin",
+    ],
+)
+
+declare_tools()
+
+[
+    alias(
+        name = tool,
+        actual = select({
+            "//:linux_aarch64": ":linux-aarch64-{}".format(tool),
+            "//:linux_x86_64": ":linux-x86_64-{}".format(tool),
+            "@platforms//os:macos": ":macos-{}".format(tool),
+            # These are the compiler's own files, so what decides them is which machine
+            # runs clang and not what clang is asked to produce. For the three arms
+            # above those are the same thing, so a target keyed select gets the right
+            # answer by accident. Cross compiling to Windows is the first case where
+            # they differ, and the answer is the host's clang, which is why this arm
+            # names linux-x86_64 and not anything Windows shaped. It is correct only
+            # because the Windows toolchain is registered for a Linux x86_64 execution
+            # platform and nothing else, which is spelled out in the parent BUILD file.
+            "//:windows_x86_64": ":linux-x86_64-{}".format(tool),
+        }),
+        tags = [
+            "manual",
+            TOP_LEVEL_TAG,
+        ],
+    )
+    for tool in [
+        "builtin_headers",
+        "clang-format",
+        "clang-tidy",
+        "clangd",
+        "llvm-install-name-tool",
+        "llvm-objcopy",
+        "llvm-otool",
+        "resource_directory",
+        "resource_directory_filegroup",
+    ]
+]
+
+builtin_module_map(
+    name = "builtin_module_map",
+    include_directories = select({
+        "//:linux_aarch64": [
+            "@clang-linux-aarch64//:include_dir",
+            "@sysroot-jammy-aarch64//sysroot:root",
+        ],
+        "//:linux_x86_64": [
+            "@clang-linux-x86_64//:include_dir",
+            "@sysroot-jammy-x86_64//sysroot:root",
+        ],
+        "@platforms//os:macos": [
+            "@clang-macos//:include_dir",
+            "@sysroot-macos//sysroot:root",
+        ],
+        # Host clang headers, as above, and the target's own headers, unlike above. The
+        # sysroot half of this genuinely is target keyed, so it is the Windows one.
+        "//:windows_x86_64": [
+            "@clang-linux-x86_64//:include_dir",
+            "@sysroot-windows//sysroot:root",
+        ],
+    }),
+    tags = ["manual"],
+)
