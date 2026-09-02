@@ -28,6 +28,12 @@ jobs:
     name: Package
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # The attestation needs to mint an OIDC token and write an attestation, so this job
+    # cannot run on the read only default.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
@@ -38,9 +44,16 @@ jobs:
 
       - name: Work out the version
         id: meta
+        env:
+          # Through the environment rather than interpolated into the script, so a tag
+          # name can never be read as shell.
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          [ -n "${{ inputs.tag }}" ] && version="${{ inputs.tag }}" && version="${version#v}"
+          if [ -n "$INPUT_TAG" ]; then
+            version="${INPUT_TAG#v}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
           # A release must say which upstream commit it is against. Without that a bug
