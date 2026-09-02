@@ -106,19 +106,9 @@ builtin_module_map(
         ],
         # Host clang headers, as above, and the target's own headers, unlike above. The
         # sysroot half of this genuinely is target keyed, so it is the Windows one.
-        #
-        # This one names a headers only directory where the other three name a whole
-        # sysroot, and it has to. The rule walks each directory with find -L, and an
-        # xwin splat has sdk/Include as a symlink to sdk/include and
-        # sdk/include/10.0.26100 as a symlink to itself, both of which are there so
-        # that the paths MSVC projects expect keep working. find follows them, reports
-        # a file system loop and exits 1, and the action runs under pipefail, so the
-        # build stops with no explanation at all. Pointing at the include trees avoids
-        # the loops, and it is the more honest input anyway, since the rest of a splat
-        # is import libraries and this file is a list of headers.
         "//:windows_x86_64": [
             "@clang-linux-x86_64//:include_dir",
-            "@sysroot-windows//headers",
+            "@sysroot-windows//sysroot:root",
         ],
     }),
     tags = ["manual"],
