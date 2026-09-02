@@ -71,4 +71,9 @@ fi
 
 info "done"
 printf '\n'
-printf 'export MOJO_WINDOWS_SYSROOT=%s\n' "$OUTPUT"
+# A flag and not an export, because upstream sets --experimental_strict_repo_env, which
+# means a repository rule sees nothing from your shell except what --repo_env hands it.
+# Exporting the variable and expecting Bazel to find it gets you an empty sysroot and a
+# pile of missing header errors that look nothing like the actual problem.
+printf 'Pass this to Bazel:\n'
+printf '  --repo_env=MOJO_WINDOWS_SYSROOT=%s\n' "$OUTPUT"
