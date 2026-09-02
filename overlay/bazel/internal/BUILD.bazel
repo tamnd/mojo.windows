@@ -241,11 +241,13 @@ alias(
         "@platforms//os:macos": "@gperftools-macos//:tcmalloc",
         # NOTE: This library doesn't override new/free globally, which the default library does
         "@platforms//os:linux": "@tcmalloc//tcmalloc:tcmalloc_internal_methods_only_numa_aware",
-        # Neither allocator builds here. tcmalloc as patched in this tree needs glibc
-        # restartable sequences and reads NUMA topology out of sysfs, and gperftools
-        # has no Windows build either. Fall back to the system allocator, which is
-        # correct but slower, until a replacement lands.
-        "@platforms//os:windows": ":empty_lib",
+        # mimalloc, because neither of the other two builds here: tcmalloc as patched
+        # in this tree needs glibc restartable sequences and reads NUMA topology out
+        # of sysfs, and gperftools has no Windows build. It is not NUMA aware, so the
+        # name of this alias is a small lie on this one platform, and the partitioned
+        # overload in Globals.cpp ignores the partition and says so. That matches what
+        # the macOS arm above already does with gperftools.
+        "@platforms//os:windows": "@mimalloc//:mimalloc",
     }),
 )
 
