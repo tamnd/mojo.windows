@@ -35,9 +35,7 @@ Pieces needed, roughly in the order they bite:
 
 **A Windows platform.** A `windows_x86_64` platform and matching `config_setting`, plus a fourth entry in the toolchain registration, registered with a Linux execution constraint and a Windows target constraint. That shape is what keeps the bash drivers viable.
 
-**A sysroot.** Microsoft's CRT and Windows SDK headers and import libraries. Unlike the Linux sysroots, these cannot be mirrored, so we use `xwin`, which fetches them from Microsoft's CDN under the Visual Studio license. It goes in as a repository rule. There is precedent in the tree for a non hermetic sysroot, since the macOS one already shells out to `xcrun`.
-
-Each machine that runs `xwin` accepts the license itself. The output must not be mirrored into a public artifact store.
+**A sysroot.** Microsoft's CRT and Windows SDK headers and import libraries. Unlike the Linux sysroots, these cannot be mirrored, so we use `xwin`, which fetches them from Microsoft's CDN under the Visual Studio license. This one is done, and it has a section of its own below.
 
 **Toolchain flags.** Add `x86_64-pc-windows-msvc` to the target triples. The existing GNU and Mach-O linker flags do not apply to COFF and need a parallel set. `-fPIC` is meaningless on PE, `-fvisibility=hidden` is a no-op since PE is hidden by default, which is why `SymbolExport.h` exists at all. Artifact name patterns for `.dll`, `.lib`, `.exp` and `.pdb` need adding.
 
@@ -46,6 +44,49 @@ Use `clang` in GNU driver mode with `--target=x86_64-pc-windows-msvc`, not `clan
 The good news here is that this toolchain is built on the modern `rules_cc` Starlark API rather than legacy `unix_cc_toolchain_config`, and that API handles MSVC through the same primitives. The scaffolding is genuinely OS agnostic. Only the flag values are Unix shaped.
 
 **Dependencies that have to be gated out rather than ported.** tcmalloc depends on glibc restartable sequences and Linux NUMA topology and has no Windows port, so it is replaced with mimalloc. libfabric, nixl, uccl, ucx, rocshmem and nvshmem are Linux and GPU cluster specific and are excluded. Crashpad is portable and upstream supports Windows properly, it just is not wired up here. grpc, protobuf, abseil, opentelemetry, asio, fmt, zlib-ng, zstd and the rest are fine as they are.
+
+## The Windows sysroot
+
+Run this once per machine, and export what it prints:
+
+```
+./scripts/windows-sysroot.sh
+export MOJO_WINDOWS_SYSROOT=/path/it/printed
+```
+
+It fetches `xwin`, checks it against a pinned hash, and has it pull the MSVC CRT and the Windows SDK from Microsoft's CDN into a `crt` and an `sdk` directory. About 630 MB for the x86_64 desktop variant, and a couple of minutes. Bazel picks it up through the `sysroot-windows` repository rule, which reads `MOJO_WINDOWS_SYSROOT` and does nothing useful without it.
+
+Doing nothing useful is the designed behaviour rather than a gap. With the variable unset the repository is empty but still valid, so analysis of a Windows configured build works on any machine and only a real compile action fails. That is the same trick the macOS sysroot rule uses, and it is what lets the cross build lane check the build graph on a runner that has no business downloading Microsoft headers.
+
+### Why the script is separate from the build
+
+Running `xwin` accepts the Visual Studio license on the machine it runs on. A build system that quietly accepted a license for you the first time you typed `bazel build` would be doing something with legal weight as a side effect of something without any, so this is a script you run on purpose, once, and it says what it is doing while it does it.
+
+### What we may and may not do with the result
+
+Downloading it per machine is fine. That is the mechanism Microsoft ships and it is what the Rust ecosystem has done for years.
+
+Mirroring the result into a public artifact store is not fine, and we will not do it. That rules out the obvious shortcut of splatting once and publishing a tarball next to the Jammy sysroots, which is why this is a repository rule reading a local path rather than an `http_archive` like its Linux siblings.
+
+Copying a splat between your own machines is a question for whoever owns the license on those machines, and this project takes no position on it. The script is cheap enough to run per machine that the question does not need answering.
+
+For CI the position is that any lane needing real Windows compilation runs on a self hosted runner that has run the script, or on a GitHub hosted `windows-latest` image, which already carries a licensed Visual Studio install and needs no sysroot at all because it has the real thing. Hosted Linux runners get the empty repository and the analysis only lane. No CI job uploads a sysroot anywhere.
+
+### Proof it works
+
+Worth writing down because the pieces are individually plausible and the combination is the thing that matters. On a Linux x86_64 host, with the toolchain clang the build already pins, which is 22.1.4:
+
+```
+clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld \
+  -isystem $S/crt/include -isystem $S/sdk/include/ucrt \
+  -isystem $S/sdk/include/um -isystem $S/sdk/include/shared \
+  -L $S/crt/lib/x86_64 -L $S/sdk/lib/ucrt/x86_64 -L $S/sdk/lib/um/x86_64 \
+  probe.cpp -o probe.exe
+```
+
+against a program including `windows.h`, `<cstdio>`, `<string>` and `<vector>`, calling `GetSystemInfo` and printing out of `std::vector<std::string>`. That produces a PE32+ console executable which runs correctly on Windows 11.
+
+One version constraint fell out of that and it is worth knowing before you hit it. The MSVC standard library shipping today refuses to compile on anything older than Clang 19, with a `static_assert` in `yvals_core.h` that says so in as many words. The pinned toolchain is 22.1.4 so this never bites in a real build, but it will bite immediately if you reach for a distribution clang, and Ubuntu 24.04 ships clang 18.
 
 ## Linking
 
