@@ -1,0 +1,29 @@
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -116,13 +116,20 @@
+         ":zlib_gen",
+     ],
+     copts = select({
++        # These were the cl spellings of the same suppressions, which assumes that a
++        # Windows target means the cl driver. It does not here. This build targets
++        # Windows through clang's GNU driver, where a leading slash is a path, so
++        # clang went looking for a file called /wd4127 and stopped. The GNU driver
++        # also never saw the -std=c11 the other two arms get, which this fixes as a
++        # side effect. -Wno-deprecated-declarations stands in for /wd4996, and the
++        # rest have no GNU equivalent worth naming because they are not warnings
++        # clang emits.
+         "@platforms//os:windows": [
+-            "/wd4127",  # conditional expression is constant
+-            "/wd4131",  # old-style declarator
+-            "/wd4244",  # possible loss of data
+-            "/wd4245",  # signed/unsigned mismatch
+-            "/wd4267",  # conversion from size_t
+-            "/wd4996",  # deprecated functions
++            "-std=c11",
++            "-Wno-deprecated-declarations",
++            "-Wno-deprecated-non-prototype",
++            "-Wno-unused-variable",
++            "-Wno-implicit-function-declaration",
+         ],
+         "@platforms//os:macos": [
+             "-std=c11",
