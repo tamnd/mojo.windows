@@ -1,6 +1,6 @@
 --- a/util/util.bzl
 +++ b/util/util.bzl
-@@ -79,7 +79,9 @@
+@@ -79,6 +79,8 @@
  # for our code or the headers we include, so configure the C version inside the
  # library. If Bazel's C/C++ version handling improves, we may reconsider this.
  boringssl_copts_c = boringssl_copts_common + select({
