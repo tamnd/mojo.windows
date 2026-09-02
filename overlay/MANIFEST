@@ -17,6 +17,7 @@ edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 edit	9958fb19c8e9b86a4636b088a591b381170417fe	Mojo/tools/mojo/DriverOptions.td
 edit	e3376e74de03f0d0b2b99e312639ba548d060ec7	Mojo/tools/mojo/mojo.cpp
 edit	ed0961200dc215798abd226500fb6652adab461c	Support/BUILD.bazel
+edit	20fb58247a96ad23cf6fc3a6cba5f6fac51abb39	Support/include/Support/MicroBenchmark.h
 edit	f00c8b1f7334a036e7a0bad8a85033a538f4f446	Support/include/Support/Threading/HWInfo.h
 new	-	Support/include/Support/WindowsHeader.h
 edit	b8ab17ec375a32423ca610799241edb9c8fa4f4f	Support/lib/BinaryID.cpp
