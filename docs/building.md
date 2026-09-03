@@ -148,9 +148,11 @@ That produces `bazel-bin/Mojo/examples/windows-hello/hello.exe`, a PE32+ console
 
 `--config=windows` is two flags, the platform and `MODULAR_TARGET`, and the second one is easy to leave out because it looks redundant. It is not. Without it every tool the build needs on the way to the answer gets configured for the target rather than for the machine doing the work, so Bazel cross compiles the Mojo compiler to Windows and then tries to execute it, and what you see is a launcher complaining about network paths.
 
-The executable is not standalone. It needs `KGENCompilerRTShared.dll`, `MSupportGlobals.dll` and `AsyncRTRuntimeGlobals.dll`, which end up under `bazel-bin/Mojo`, `bazel-bin/Support` and `bazel-bin/AsyncRT` respectively rather than next to the binary. Copy all three into the directory you run the executable from. The PE loader looks in the directory the executable is in and does not look anywhere useful after that, so being one directory away is the same as being absent, and being absent means the process exits with status zero having printed nothing at all.
+The executable is not standalone. It needs `KGENCompilerRTShared.dll`, `MSupportGlobals.dll` and `AsyncRTRuntimeGlobals.dll`, and Bazel puts all three next to it, so the whole of that directory is what you move to a Windows machine.
 
-The reason they are not already there is that `copy_dynamic_libraries_to_binary` is a `cc_binary` feature, and a `mojo_binary` is not a `cc_binary`. That is #148. For now the copy is a step you do by hand, or a step your test harness does.
+That is worth one sentence of why, because it is not how Bazel lays out a build anywhere else. PE has no rpath. The loader looks in the directory the executable is in, then in a short list of system directories, and then gives up, so a library one directory away is a library that is not there. The build turns on `copy_dynamic_libraries_to_binary` for Windows targets to put a copy of each one where the loader will look, which #146 did for `cc_binary` and #151 did for `mojo_binary`.
+
+If you ever do end up running one of these without its DLLs, the symptom is nothing. A console process that cannot resolve an import exits with status zero and prints nothing at all, with no message and no dialog. It looks exactly like a program that ran and chose to say nothing.
 
 ## Testing a cross build
 
