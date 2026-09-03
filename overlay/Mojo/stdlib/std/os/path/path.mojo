@@ -35,6 +35,7 @@ from .._linux_x86 import _stat as _stat_linux_x86
 from .._macos import _lstat as _lstat_macos
 from .._macos import _stat as _stat_macos
 from .._windows import _lstat as _lstat_windows
+from .._windows import _realpath as _realpath_windows
 from .._windows import _stat as _stat_windows
 from ..env import getenv
 from ..fstat import stat
@@ -329,6 +330,15 @@ def realpath[
     Returns:
         A String of the resolved path.
     """
+    # Windows has no `realpath`, and the call that answers the same question
+    # works from an open handle rather than from a name, so the whole of it
+    # lives next to the other file system calls. See `_realpath` there. The
+    # result is spelled the Windows way, with backslashes and a drive letter,
+    # and it fails for a name that is not there, which is what this does
+    # everywhere else too.
+    comptime if CompilationTarget.is_windows():
+        return _realpath_windows(path.__fspath__())
+
     var string = String(capacity_bytes=MAX_PATH)
 
     # Bind the fspath result to a variable so its buffer stays alive

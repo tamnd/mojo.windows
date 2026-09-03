@@ -44,6 +44,11 @@ made to. See `_lstat` below.
 Listing a directory is here too, for the same reason: `opendir` and `readdir`
 are not in the CRT either, and the Win32 way of walking a directory hands back
 the same `WIN32_FIND_DATAW` that `_lstat` already needed. See `_listdir`.
+
+Hard links, symbolic links and real paths are here as well. `link`, `symlink`
+and `realpath` are not in the CRT under any spelling, and all three have a Win32
+equivalent that takes its arguments in the other order or answers a slightly
+different question. See the last section.
 """
 
 from std.collections import Array
@@ -100,6 +105,55 @@ comptime _LINK_PERMISSIONS = 0o777
 # Derived rather than written out, so that there is one place holding the fact
 # that a FILETIME tick is a hundred nanoseconds.
 comptime _FILETIME_TICKS_PER_SEC = 1_000_000_000 // _FILETIME_TICKS_PER_NSEC
+
+# What CreateFileW needs to open a name only in order to ask about it.
+# FILE_READ_ATTRIBUTES is enough for GetFileInformationByHandle and for
+# GetFinalPathNameByHandleW, and it is the access a file somebody else has open
+# for writing will still grant. All three share bits are set for the same
+# reason: the default is to share nothing, which would make asking about a busy
+# file fail for a reason that has nothing to do with the question.
+comptime _FILE_READ_ATTRIBUTES = UInt32(0x80)
+comptime _FILE_SHARE_ALL = UInt32(0x7)
+comptime _OPEN_EXISTING = UInt32(3)
+
+# Without this CreateFileW cannot open a directory at all, which is the most
+# surprising thing about it. The name is about backup programs and the flag is
+# about nothing else.
+comptime _FILE_FLAG_BACKUP_SEMANTICS = UInt32(0x0200_0000)
+
+# GetFinalPathNameByHandleW: the normalised name, spelled with a drive letter
+# rather than with the volume GUID. Both are zero, and they are written out
+# because a reader should not have to know that to see which flags are meant.
+comptime _FILE_NAME_NORMALIZED = UInt32(0x0)
+comptime _VOLUME_NAME_DOS = UInt32(0x0)
+
+# CreateSymbolicLinkW says up front whether the target is a directory, because
+# it has to create the reparse point before anything resolves it.
+comptime _SYMBOLIC_LINK_FLAG_DIRECTORY = UInt32(0x1)
+
+# Creating a symlink is a privileged operation unless the machine is in
+# Developer Mode, and this flag is how a caller says it is willing to rely on
+# that. Older builds reject the flag itself rather than ignoring it, which is
+# what the retry in `_symlink` is for.
+comptime _SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE = UInt32(0x2)
+
+comptime _ERROR_INVALID_PARAMETER = UInt32(87)
+comptime _ERROR_PRIVILEGE_NOT_HELD = UInt32(1314)
+
+# How long a path GetFinalPathNameByHandleW is asked for before it is asked
+# again with room for the answer. Long enough that the second call almost never
+# happens and small enough to be a stack sized allocation if it ever becomes
+# one.
+comptime _PATH_CHARS = 512
+
+# The prefix that turns off path parsing in the kernel, and the longer one that
+# does the same for a share. Both come back from GetFinalPathNameByHandleW and
+# neither is what a caller asked about. The lengths are written out because they
+# are used to cut the string and both prefixes are pure ASCII.
+comptime _EXTENDED_PREFIX = "\\\\?\\"
+comptime _EXTENDED_PREFIX_BYTES = 4
+comptime _EXTENDED_UNC_PREFIX = "\\\\?\\UNC\\"
+comptime _EXTENDED_UNC_PREFIX_BYTES = 8
 
 
 # ===-----------------------------------------------------------------------===#
@@ -280,6 +334,55 @@ struct _win32_find_data(Copyable, Defaultable):
         )
 
 
+@fieldwise_init
+struct _by_handle_file_information(Copyable, Defaultable):
+    """What GetFileInformationByHandle fills in.
+
+    Two of these fields are the reason this call is worth opening a handle for.
+    `links` is the hard link count, which the CRT's `stat` reports as one no
+    matter how many there are, and the two halves of the file index are the
+    closest thing Windows has to an inode number. Everything else in here is
+    also in WIN32_FILE_ATTRIBUTE_DATA and is not read.
+
+    The FILETIME fields are pairs of `UInt32` for the same reason they are in
+    `_win32_file_attribute_data`: a FILETIME is only four byte aligned and
+    writing one as a `UInt64` would move every field after it.
+    """
+
+    var attributes: UInt32
+    """The FILE_ATTRIBUTE bits."""
+    var creation: Array[UInt32, 2]
+    """Creation time, low half first."""
+    var last_access: Array[UInt32, 2]
+    """Time of last access, low half first."""
+    var last_write: Array[UInt32, 2]
+    """Time of last write, low half first."""
+    var volume_serial: UInt32
+    """Serial number of the volume the file is on."""
+    var size_high: UInt32
+    """High thirty two bits of the size."""
+    var size_low: UInt32
+    """Low thirty two bits of the size."""
+    var links: UInt32
+    """Number of hard links to the file."""
+    var index_high: UInt32
+    """High thirty two bits of the file index."""
+    var index_low: UInt32
+    """Low thirty two bits of the file index."""
+
+    def __init__(out self):
+        self.attributes = 0
+        self.creation = Array[UInt32, 2](fill=0)
+        self.last_access = Array[UInt32, 2](fill=0)
+        self.last_write = Array[UInt32, 2](fill=0)
+        self.volume_serial = 0
+        self.size_high = 0
+        self.size_low = 0
+        self.links = 0
+        self.index_high = 0
+        self.index_low = 0
+
+
 @always_inline
 def _assert_layouts():
     """The measured sizes, checked rather than trusted.
@@ -303,6 +406,12 @@ def _assert_layouts():
     comptime assert (
         align_of[_win32_find_data]() == 4
     ), "WIN32_FIND_DATAW aligns to 4"
+    comptime assert (
+        size_of[_by_handle_file_information]() == 52
+    ), "BY_HANDLE_FILE_INFORMATION is 52 bytes"
+    comptime assert (
+        align_of[_by_handle_file_information]() == 4
+    ), "BY_HANDLE_FILE_INFORMATION aligns to 4"
 
 
 # ===-----------------------------------------------------------------------===#
@@ -546,3 +655,273 @@ def _listdir(var path: String) raises -> List[_dir_entry]:
         )
 
     return entries^
+
+
+# ===-----------------------------------------------------------------------===#
+# Handles
+# ===-----------------------------------------------------------------------===#
+
+
+def _open_for_query(wide: List[UInt16]) -> Int:
+    """A handle good only for asking about a name, or the invalid handle.
+
+    Everything below that needs more than a name needs one of these and they all
+    want it opened the same way. See the constants above for what each argument
+    is doing, in particular the backup semantics flag, which is the difference
+    between this working on a directory and refusing to.
+    """
+    return external_call["CreateFileW", Int](
+        wide.unsafe_ptr(),
+        _FILE_READ_ATTRIBUTES,
+        _FILE_SHARE_ALL,
+        # No security attributes, which is what anything that is not creating
+        # something passes.
+        OptionalPointer[NoneType, MutUntrackedOrigin](),
+        _OPEN_EXISTING,
+        _FILE_FLAG_BACKUP_SEMANTICS,
+        # No template file, which is also only meaningful when creating.
+        Int(0),
+    )
+
+
+# ===-----------------------------------------------------------------------===#
+# stat, with the fields a handle can answer
+# ===-----------------------------------------------------------------------===#
+
+
+def _stat_with_identity(var path: String) raises -> stat_result:
+    """`stat`, with the two fields the C runtime cannot answer filled in.
+
+    `_wstat64` reports `st_ino` as zero and `st_nlink` as one for every file.
+    That is fine for the predicates in `os.path`, which read neither, and wrong
+    for the two questions anybody actually asks a `stat_result` about a hard
+    link: whether two names are the same file, and how many names it has. Both
+    are in BY_HANDLE_FILE_INFORMATION and both cost a handle.
+
+    That cost is why this is not what `_stat` does. `exists`, `isdir`, `isfile`
+    and `makedirs` all go through `_stat`, and opening a handle for them would
+    slow down the common path to answer a question none of them ask. `os.stat`
+    is the entry point where somebody is holding the whole structure.
+
+    A name that cannot be opened keeps the C runtime's answers rather than
+    failing. It has already been resolved by then, so there is a real
+    `stat_result` in hand, and giving that up because of an antivirus filter or
+    a file somebody has open for exclusive access would be a worse answer than
+    an incomplete one.
+    """
+    var result = _stat(path.copy())._to_stat_result()
+
+    var wide = to_utf16(path.as_bytes())
+    var handle = _open_for_query(wide)
+    _ = wide^
+    if handle == _INVALID_HANDLE_VALUE:
+        return result^
+
+    var info = _by_handle_file_information()
+    var ok = external_call["GetFileInformationByHandle", Int32](
+        handle, Pointer(to=info)
+    )
+    _ = external_call["CloseHandle", Int32](handle)
+    if ok == 0:
+        return result^
+
+    # Signed, and a file index is allowed to use all sixty four bits, so this
+    # can come out negative. Nothing does arithmetic on an inode number. It is
+    # compared against another one, and a wrapped value compares the same way
+    # the unwrapped one would.
+    result.st_ino = Int(
+        (UInt64(info.index_high) << 32) | UInt64(info.index_low)
+    )
+    # The volume serial comes from the same call because the two belong
+    # together. POSIX says `st_ino` is unique for a given `st_dev`, and the
+    # drive number the C runtime puts in `st_dev` is not what this index is
+    # unique within, so taking one without the other would produce a pair that
+    # does not mean anything.
+    result.st_dev = Int(info.volume_serial)
+    result.st_nlink = Int(info.links)
+    return result^
+
+
+# ===-----------------------------------------------------------------------===#
+# link, symlink and realpath
+# ===-----------------------------------------------------------------------===#
+
+
+def _link(var oldpath: String, var newpath: String) raises:
+    """A hard link, with the arguments in the order Win32 wants them.
+
+    CreateHardLinkW names the link first and the existing file second, which is
+    the other way round from `link(2)`, and both spellings read as "from, to" to
+    anybody who has not just looked it up. Getting it backwards makes a link
+    with the wrong name and reports no error at all, so the swap happens here
+    and happens once.
+
+    NTFS only, and one volume only. ReFS has no hard links and FAT never did, so
+    a link across a drive letter or onto a USB stick fails, and the sentence the
+    system gives for it is more use than a check of our own would be.
+    """
+    var wide_new = to_utf16(newpath.as_bytes())
+    var wide_old = to_utf16(oldpath.as_bytes())
+    var ok = external_call["CreateHardLinkW", Int32](
+        wide_new.unsafe_ptr(),
+        wide_old.unsafe_ptr(),
+        # No security attributes. A hard link is another directory entry for a
+        # file that already has an ACL, so there is nothing here to describe.
+        OptionalPointer[NoneType, MutUntrackedOrigin](),
+    )
+    var code = last_error()
+    _ = wide_new^
+    _ = wide_old^
+
+    if ok == 0:
+        raise Error(
+            "Can not create link from ",
+            newpath,
+            " to ",
+            oldpath,
+            " Err: ",
+            error_message(code),
+        )
+
+
+def _target_is_directory(wide_target: List[UInt16]) -> Bool:
+    """Whether the target is there and is a directory.
+
+    A POSIX symlink does not care what it points at and can be made before the
+    target exists. A Windows one has to say which it is at creation time,
+    because the reparse point is tagged as a file link or a directory link and
+    nothing re-reads the tag later. So this looks, and a target that is not
+    there yet is taken to be a file, which is the common case and the one the
+    standard library's own test does.
+    """
+    var attributes = external_call["GetFileAttributesW", UInt32](
+        wide_target.unsafe_ptr()
+    )
+    if attributes == _INVALID_FILE_ATTRIBUTES:
+        return False
+    return (attributes & _FILE_ATTRIBUTE_DIRECTORY) != 0
+
+
+def _symlink(var target: String, var linkpath: String) raises:
+    """A symbolic link, or an error saying why the system would not make one.
+
+    Three things are different from `symlink(2)` and all three have bitten
+    somebody.
+
+    CreateSymbolicLinkW names the link first and the target second, the other
+    way round from POSIX, the same trap as `_link` above.
+
+    Making one is privileged. An ordinary account does not hold
+    SeCreateSymbolicLinkPrivilege, so this is not a missing call, it is a call
+    that fails with ERROR_PRIVILEGE_NOT_HELD, and the way through it is
+    Developer Mode plus a flag saying the caller is willing to rely on that.
+    Builds before Windows 10 1703 reject the flag itself as an invalid
+    parameter rather than ignoring it, which is what the retry is for.
+
+    It returns BOOLEAN and not BOOL, so the answer is one byte wide. Reading
+    four would pick up whatever else happened to be in the register.
+    """
+    var wide_link = to_utf16(linkpath.as_bytes())
+    var wide_target = to_utf16(target.as_bytes())
+
+    var flags = UInt32(0)
+    if _target_is_directory(wide_target):
+        flags |= _SYMBOLIC_LINK_FLAG_DIRECTORY
+
+    var ok = external_call["CreateSymbolicLinkW", UInt8](
+        wide_link.unsafe_ptr(),
+        wide_target.unsafe_ptr(),
+        flags | _SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE,
+    )
+    var code = last_error()
+    if ok == 0 and code == _ERROR_INVALID_PARAMETER:
+        ok = external_call["CreateSymbolicLinkW", UInt8](
+            wide_link.unsafe_ptr(), wide_target.unsafe_ptr(), flags
+        )
+        code = last_error()
+
+    _ = wide_link^
+    _ = wide_target^
+
+    if ok == 0:
+        # The system's sentence for ERROR_PRIVILEGE_NOT_HELD is "A required
+        # privilege is not held by the client", which is true and tells nobody
+        # what to do about it. This is the one code worth a sentence of our own.
+        var reason = error_message(code)
+        if code == _ERROR_PRIVILEGE_NOT_HELD:
+            reason = String(
+                "the account does not hold SeCreateSymbolicLinkPrivilege and"
+                " the machine is not in Developer Mode"
+            )
+        raise Error(
+            "Can not create symlink from ",
+            linkpath,
+            " to ",
+            target,
+            " Err: ",
+            reason,
+        )
+
+
+def _strip_extended_prefix(var path: String) -> String:
+    """`\\\\?\\C:\\dir` back to `C:\\dir`, and the share form back to
+    `\\\\server\\share`."""
+    if path.startswith(_EXTENDED_UNC_PREFIX):
+        return String("\\\\", path[byte=_EXTENDED_UNC_PREFIX_BYTES :])
+    if path.startswith(_EXTENDED_PREFIX):
+        return String(path[byte=_EXTENDED_PREFIX_BYTES :])
+    return path^
+
+
+def _realpath(var path: String) raises -> String:
+    """The canonical name of a file that exists.
+
+    GetFinalPathNameByHandleW is the only call that resolves the whole chain,
+    and it does it by working from an open handle and asking the filesystem what
+    that handle ended up referring to. So this opens the file, and so this fails
+    for a name that is not there. POSIX `realpath` fails there too, which means
+    the two platforms agree, and a caller that wants an answer for a path which
+    does not exist yet wants `abspath`.
+
+    The name comes back in the extended form, `\\\\?\\C:\\dir\\file`. That is a
+    real path and not one anybody wants to read or compare against, so the
+    prefix comes off, and `\\\\?\\UNC\\server\\share` goes back to
+    `\\\\server\\share`. Both are what CPython's `ntpath.realpath` does. It is
+    lossy in exactly one case, a result past 260 characters, which needs the
+    prefix to be opened again. Agreeing with CPython is worth more than being
+    right about a path nobody on this platform can type.
+    """
+    var wide = to_utf16(path.as_bytes())
+    var handle = _open_for_query(wide)
+    _ = wide^
+    if handle == _INVALID_HANDLE_VALUE:
+        raise Error("realpath failed to resolve: ", error_message(last_error()))
+
+    comptime flags = _FILE_NAME_NORMALIZED | _VOLUME_NAME_DOS
+    var buffer = List[UInt16](length=_PATH_CHARS, fill=0)
+    var count = Int(
+        external_call["GetFinalPathNameByHandleW", UInt32](
+            handle, buffer.unsafe_ptr(), UInt32(_PATH_CHARS), flags
+        )
+    )
+
+    # A count that fills the buffer is the call saying it did not fit, and the
+    # number is then what it needs including the nul. Asking again is the whole
+    # of the retry, since the handle is still open and the answer cannot have
+    # changed underneath it.
+    if count >= _PATH_CHARS:
+        buffer = List[UInt16](length=count + 1, fill=0)
+        count = Int(
+            external_call["GetFinalPathNameByHandleW", UInt32](
+                handle, buffer.unsafe_ptr(), UInt32(count + 1), flags
+            )
+        )
+
+    var code = last_error()
+    _ = external_call["CloseHandle", Int32](handle)
+    if count == 0:
+        raise Error("realpath failed to resolve: ", error_message(code))
+
+    var resolved = to_utf8(Span(unsafe_ptr=buffer.unsafe_ptr(), length=count))
+    _ = buffer^
+    return _strip_extended_prefix(resolved^)

@@ -30,7 +30,9 @@ from std.reflection import SourceLocation, call_location
 from std._gpu import thread_idx, block_idx
 from std.sys import CompilationTarget, is_gpu, is_apple_gpu
 
+from ._windows import _link as _link_windows
 from ._windows import _listdir
+from ._windows import _symlink as _symlink_windows
 from .path import isdir, split, exists
 from .pathlike import PathLike as stdPathLike
 
@@ -449,6 +451,9 @@ def symlink[
     var target_fspath = target.__fspath__()
     var linkpath_fspath = linkpath.__fspath__()
 
+    comptime if CompilationTarget.is_windows():
+        return _symlink_windows(target_fspath^, linkpath_fspath^)
+
     var error = external_call["symlink", c_int](
         target_fspath.as_c_string_slice(),
         linkpath_fspath.as_c_string_slice(),
@@ -489,6 +494,9 @@ def link[
     """
     var oldpath_fspath = oldpath.__fspath__()
     var newpath_fspath = newpath.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _link_windows(oldpath_fspath^, newpath_fspath^)
 
     var error = external_call["link", Int32](
         oldpath_fspath.as_c_string_slice(),

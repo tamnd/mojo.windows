@@ -30,7 +30,7 @@ from ._linux_x86 import _stat as _stat_linux_x86
 from ._macos import _lstat as _lstat_macos
 from ._macos import _stat as _stat_macos
 from ._windows import _lstat as _lstat_windows
-from ._windows import _stat as _stat_windows
+from ._windows import _stat_with_identity as _stat_windows_identity
 
 
 # ===----------------------------------------------------------------------=== #
@@ -196,7 +196,11 @@ def stat[PathLike: stdPathLike](path: PathLike) raises -> stat_result:
     var fspath = path.__fspath__()
 
     comptime if CompilationTarget.is_windows():
-        return _stat_windows(fspath^)._to_stat_result()
+        # Not the plain `_stat` the `os.path` predicates use. This is the one
+        # place somebody is holding the whole structure, so it is the place
+        # worth opening a handle to fill in the fields the C runtime leaves
+        # empty. See `_stat_with_identity`.
+        return _stat_windows_identity(fspath^)
     elif CompilationTarget.is_macos():
         return _stat_macos(fspath^)._to_stat_result()
     elif CompilationTarget.has_neon():
