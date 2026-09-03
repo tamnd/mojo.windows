@@ -47,12 +47,14 @@ cc_args(
     env = {
         "BUILD_IFS": "{generate_interface_library}",
     } | select({
+        # linker-driver.sh has to know which of the three ways of producing an
+        # interface library applies, and the platform is not something it can work out
+        # for itself: it runs on the host, and every one of these builds is a cross
+        # build as far as the target is concerned. The Windows half of that answer is
+        # WINDOWS, which used to be set here and is now set on every link action in
+        # //bazel/internal/cc-toolchain/args:link_args, because the driver needs it for
+        # more than this feature.
         "@platforms//os:macos": {"MACOS": "true"},
-        # Same idea as MACOS above. linker-driver.sh has to know which of the three
-        # ways of producing an interface library applies, and the platform is not
-        # something it can work out for itself: it runs on the host, and every one of
-        # these builds is a cross build as far as the target is concerned.
-        "@platforms//os:windows": {"WINDOWS": "true"},
         "//conditions:default": {},
     }),
     format = {"generate_interface_library": "@rules_cc//cc/toolchains/variables:generate_interface_library"},
