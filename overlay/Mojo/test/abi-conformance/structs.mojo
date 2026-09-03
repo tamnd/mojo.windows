@@ -29,7 +29,7 @@ Prints nothing when everything passes and exits zero. Prints one line per
 failure and exits one otherwise.
 """
 
-from std.ffi import external_call
+from std.ffi import c_long, external_call
 from std.sys import exit
 
 from abi_probe import (
@@ -193,6 +193,51 @@ struct Nested(TrivialRegisterPassable):
 # other failure in the run.
 
 
+# Shapes holding something other than a plain scalar.
+#
+# The three array shapes are spelled differently on the two sides on purpose. C
+# declares a field of array type and Mojo writes the elements out as separate
+# fields, because `Array` is not `TrivialRegisterPassable` and cannot be a field
+# of a struct that is. That makes these a differential test rather than a
+# translation: both conventions classify an aggregate by its size and by what its
+# leaves are, so an array of three ints and three int fields have to be passed
+# identically, and if they are not then one of the two spellings is being
+# classified by its shape instead of its contents.
+#
+# WithLong is here for a different reason. Nothing else in this suite can see a
+# wrong C `long`. Everywhere else the width is absorbed, because a slot is eight
+# bytes and the callee reads the low end of it. Inside a struct it moves the
+# offset of every field after it and changes the size of the whole thing, and
+# that is the one place a wrong width turns into a wrong value.
+@fieldwise_init
+struct WithLong(TrivialRegisterPassable):
+    var a: c_long
+    var b: Int32
+    var c: c_long
+
+
+@fieldwise_init
+struct WithArray(TrivialRegisterPassable):
+    var v0: UInt32
+    var v1: UInt32
+    var v2: UInt32
+
+
+@fieldwise_init
+struct WithLongArray(TrivialRegisterPassable):
+    var v0: Int64
+    var v1: Int64
+
+
+@fieldwise_init
+struct WithCharArray(TrivialRegisterPassable):
+    var v0: Int8
+    var v1: Int8
+    var v2: Int8
+    var v3: Int8
+    var v4: Int8
+
+
 def test_layout() -> Int:
     var failures = check_size[B1, "abi_size_b1"]("B1")
     failures += check_size[B2, "abi_size_b2"]("B2")
@@ -211,6 +256,14 @@ def test_layout() -> Int:
     failures += check_size[TwoLongs, "abi_size_two_longs"]("TwoLongs")
     failures += check_size[ThreeLongs, "abi_size_three_longs"]("ThreeLongs")
     failures += check_size[Nested, "abi_size_nested"]("Nested")
+    failures += check_size[WithLong, "abi_size_with_long"]("WithLong")
+    failures += check_size[WithArray, "abi_size_with_array"]("WithArray")
+    failures += check_size[WithLongArray, "abi_size_with_long_array"](
+        "WithLongArray"
+    )
+    failures += check_size[WithCharArray, "abi_size_with_char_array"](
+        "WithCharArray"
+    )
     return failures
 
 
@@ -569,6 +622,96 @@ def test_return_with_arguments() -> Int:
     return failures
 
 
+def test_struct_with_long() -> Int:
+    """A struct holding C `long`, which is the only shape a wrong width breaks.
+
+    On Windows this is twelve bytes and on Linux it is twenty four, because the
+    padding after the middle field follows the alignment of the field before it.
+    Both are right, and the layout check asks C which one applies here rather
+    than deciding from the platform name.
+    """
+    comptime probe = "abi_struct_with_long"
+    reset()
+    external_call[probe, NoneType](WithLong(c_long(701), 702, c_long(703)))
+    var failures = check_count(probe, 3)
+    failures += check_int(probe, 0, 701)
+    failures += check_int(probe, 1, 702)
+    failures += check_int(probe, 2, 703)
+
+    comptime after = "abi_struct_with_long_then"
+    reset()
+    external_call[after, NoneType](
+        WithLong(c_long(711), 712, c_long(713)), Int64(714)
+    )
+    failures += check_count(after, 4)
+    failures += check_int(after, 0, 711)
+    failures += check_int(after, 1, 712)
+    failures += check_int(after, 2, 713)
+    failures += check_int(after, 3, 714)
+
+    comptime returned = "abi_ret_with_long"
+    var result = external_call[returned, WithLong](
+        WithLong(c_long(721), 722, c_long(723))
+    )
+    failures += check_returned_int_field(returned, 0, Int64(result.a), 722)
+    failures += check_returned_int_field(returned, 1, Int64(result.b), 723)
+    failures += check_returned_int_field(returned, 2, Int64(result.c), 724)
+    return failures
+
+
+def test_structs_with_arrays() -> Int:
+    """Structs whose fields are arrays rather than named scalars.
+
+    Twelve bytes of three ints, sixteen bytes of two longs, and five bytes of
+    chars. The first is two registers on Linux and a pointer on Windows, the
+    second is a pointer on both, and the third is one register on Linux and a
+    pointer on Windows, so the three cover every branch the size rules have.
+    """
+    comptime probe = "abi_struct_with_array"
+    reset()
+    external_call[probe, NoneType](WithArray(801, 802, 803))
+    var failures = check_count(probe, 3)
+    failures += check_int(probe, 0, 801)
+    failures += check_int(probe, 1, 802)
+    failures += check_int(probe, 2, 803)
+
+    comptime longs = "abi_struct_with_long_array"
+    reset()
+    external_call[longs, NoneType](WithLongArray(811, 812))
+    failures += check_count(longs, 2)
+    failures += check_int(longs, 0, 811)
+    failures += check_int(longs, 1, 812)
+
+    comptime chars = "abi_struct_with_char_array"
+    reset()
+    external_call[chars, NoneType](WithCharArray(21, 22, 23, 24, 25))
+    failures += check_count(chars, 5)
+    for index in range(5):
+        failures += check_int(chars, index, Int64(21 + index))
+    return failures
+
+
+def test_array_struct_returns() -> Int:
+    """The same shapes coming back, which is the other half of the rules."""
+    comptime probe = "abi_ret_with_array"
+    var result = external_call[probe, WithArray](WithArray(901, 902, 903))
+    var failures = check_returned_int_field(probe, 0, Int64(result.v0), 902)
+    failures += check_returned_int_field(probe, 1, Int64(result.v1), 903)
+    failures += check_returned_int_field(probe, 2, Int64(result.v2), 904)
+
+    comptime chars = "abi_ret_with_char_array"
+    var text = external_call[chars, WithCharArray](
+        WithCharArray(31, 32, 33, 34, 35)
+    )
+    failures += check_returned_int_field(chars, 0, Int64(text.v0), 32)
+    failures += check_returned_int_field(chars, 1, Int64(text.v1), 33)
+    failures += check_returned_int_field(chars, 2, Int64(text.v2), 34)
+    failures += check_returned_int_field(chars, 3, Int64(text.v3), 35)
+    failures += check_returned_int_field(chars, 4, Int64(text.v4), 36)
+    return failures
+
+
+
 def main():
     var failures = test_layout()
     failures += test_byte_structs()
@@ -577,6 +720,9 @@ def main():
     failures += test_byte_struct_returns()
     failures += test_scalar_field_struct_returns()
     failures += test_return_with_arguments()
+    failures += test_struct_with_long()
+    failures += test_structs_with_arrays()
+    failures += test_array_struct_returns()
 
     if failures != 0:
         print(failures, "checks failed")

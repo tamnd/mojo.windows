@@ -120,6 +120,35 @@ struct Nested {
   int32_t c;
 };
 
+// Shapes that hold something other than a plain scalar. An array field is
+// classified by what it is made of and how much of it there is, exactly like the
+// same bytes spelled out as separate fields, and this says so out loud because
+// it is the sort of rule that is easier to assume than to check.
+//
+// WithLong is here for a different reason. Nothing else in this suite can see a
+// wrong C long. Everywhere else the width is absorbed, because a slot is eight
+// bytes and the callee reads the low end of it. Inside a struct it moves the
+// offset of every field after it and changes the size of the whole thing, which
+// is the one place it turns into a wrong value rather than a wrong idea.
+struct WithLong {
+  long a;
+  int32_t b;
+  long c;
+};
+
+struct WithArray {
+  uint32_t v[3];
+};
+
+struct WithLongArray {
+  int64_t v[2];
+};
+
+struct WithCharArray {
+  char v[5];
+};
+
+
 //===----------------------------------------------------------------------===//
 // Sizes
 //===----------------------------------------------------------------------===//
@@ -154,6 +183,10 @@ SIZE_OF(abi_size_float_and_int, struct FloatAndInt)
 SIZE_OF(abi_size_two_longs, struct TwoLongs)
 SIZE_OF(abi_size_three_longs, struct ThreeLongs)
 SIZE_OF(abi_size_nested, struct Nested)
+SIZE_OF(abi_size_with_long, struct WithLong)
+SIZE_OF(abi_size_with_array, struct WithArray)
+SIZE_OF(abi_size_with_long_array, struct WithLongArray)
+SIZE_OF(abi_size_with_char_array, struct WithCharArray)
 
 #undef SIZE_OF
 
@@ -426,5 +459,62 @@ struct ThreeInts abi_ret_three_ints_after(int64_t a, int64_t b,
   s.a += 1;
   s.b += 1;
   s.c += 1;
+  return s;
+}
+
+void abi_struct_with_long(struct WithLong s) {
+  abi_probe_record_int(s.a);
+  abi_probe_record_int(s.b);
+  abi_probe_record_int(s.c);
+}
+
+// The same with a neighbour after it, so a struct whose size is wrong pushes
+// something whose expected value is known independently.
+void abi_struct_with_long_then(struct WithLong s, int64_t x) {
+  abi_probe_record_int(s.a);
+  abi_probe_record_int(s.b);
+  abi_probe_record_int(s.c);
+  abi_probe_record_int(x);
+}
+
+struct WithLong abi_ret_with_long(struct WithLong s) {
+  s.a += 1;
+  s.b += 1;
+  s.c += 1;
+  return s;
+}
+
+void abi_struct_with_array(struct WithArray s) {
+  abi_probe_record_int(s.v[0]);
+  abi_probe_record_int(s.v[1]);
+  abi_probe_record_int(s.v[2]);
+}
+
+struct WithArray abi_ret_with_array(struct WithArray s) {
+  s.v[0] += 1;
+  s.v[1] += 1;
+  s.v[2] += 1;
+  return s;
+}
+
+// Sixteen bytes of array, which is past the size either convention will put in
+// registers, so it goes through memory both ways and by different rules.
+void abi_struct_with_long_array(struct WithLongArray s) {
+  abi_probe_record_int(s.v[0]);
+  abi_probe_record_int(s.v[1]);
+}
+
+// Five bytes, which is one of the sizes Win64 refuses to put in a register and
+// System V still packs into one.
+void abi_struct_with_char_array(struct WithCharArray s) {
+  for (int i = 0; i < 5; i++) {
+    abi_probe_record_int((int64_t)s.v[i]);
+  }
+}
+
+struct WithCharArray abi_ret_with_char_array(struct WithCharArray s) {
+  for (int i = 0; i < 5; i++) {
+    s.v[i] += 1;
+  }
   return s;
 }
