@@ -13,8 +13,10 @@ MANIFEST="$OVERLAY_DIR/MANIFEST"
 WORK_DIR="${MOJO_WIN_WORKDIR:-$REPO_ROOT/.upstream}"
 CHECKOUT="$WORK_DIR/modular"
 
+# Both go to stderr. Progress is not output, and run-on-windows.sh has its stdout piped
+# into FileCheck by a caller that will fail on anything it did not expect to see there.
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
-info() { printf '==> %s\n' "$*"; }
+info() { printf '==> %s\n' "$*" >&2; }
 
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but was not found on PATH"; }
 

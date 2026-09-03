@@ -42,6 +42,10 @@ build:prebuilt-mojo --//:use_prebuilt_mojo_toolchain=true
 build:windows --platforms=//:windows-x86_64-platform
 build:windows --repo_env=MODULAR_TARGET=windows:x86_64
 
+# A test harness runs on the machine driving the build and not on the target. See
+# bazel/internal/cross_platform_test.bzl for what that costs and why it is needed.
+build:windows --//bazel/internal:cross_test
+
 # Check for a local gitignored bazel config.
 # NOTE: Import this last so that local configs can override.
 try-import %workspace%/local.bazelrc

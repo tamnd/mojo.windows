@@ -28,8 +28,21 @@ def main() -> int:
     filecheck = os.environ["FILECHECK"]
     source = os.environ["SOURCE"]
 
+    # The binary is the only part of this test that was built for Windows. FileCheck, the
+    # `not` tool and this script all belong to the machine doing the build, so when the
+    # test runs on Linux against a Windows target it is one process out of four that has
+    # to travel. Bazel's --run_under cannot express that, since it wraps the test rather
+    # than anything the test starts. run-on-windows.sh sets MOJO_WINDOWS_RUN when it has
+    # been given something that is not a Windows binary, which is how it says "you know
+    # which one of yours is, I do not".
+    runner = os.environ.get("MOJO_WINDOWS_RUN", "")
+
     command = [binary, *sys.argv[1:]]
-    if os.environ["EXPECT_CRASH"] == "1":
+    if runner:
+        command = [runner, *command]
+
+    expect_crash = os.environ["EXPECT_CRASH"] == "1"
+    if expect_crash and not runner:
         command = [os.environ["NOT"], "--crash", *command]
     elif os.environ["EXPECT_FAIL"] == "1":
         command = [os.environ["NOT"], *command]
@@ -44,6 +57,21 @@ def main() -> int:
 
     check.wait()
     produce.wait()
+
+    # `not --crash` asks whether the process died from a signal, and a Windows
+    # process does not die from a signal. abort() is exit code 3 there, an access
+    # violation is an NTSTATUS like 0xc0000409, and either one is a single byte by
+    # the time ssh has handed it back. So a remote run checks that the binary
+    # exited non zero and leaves the shape of the failure to FileCheck, which is
+    # reading the assertion message and is where the content of these tests is.
+    if expect_crash and runner:
+        if produce.returncode == 0:
+            print(
+                "error: expected a crash and the binary exited 0",
+                file=sys.stderr,
+            )
+            return 1
+        return check.returncode
 
     # What bash reports for a pipeline under `set -o pipefail`, which is what the
     # script this replaces ran under: the status of the rightmost command that

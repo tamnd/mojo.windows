@@ -24,6 +24,11 @@
 #   MOJO_WINDOWS_TEST_ENV        NAME=VALUE lines to set on the far side, one per line
 #   MOJO_WINDOWS_TEST_VERBOSE    set to anything to print the environment being set
 #
+# One variable goes the other way. When the program handed to this script is not a Windows
+# binary it is run where it is, with MOJO_WINDOWS_RUN set to the path of this script, so a
+# test wrapper that has a Windows binary of its own to run can send that one across. See
+# the passthrough below for why that is the right level for the decision.
+#
 # Two transports because there are two situations, not because one of them was
 # insufficiently thought about.
 #
@@ -63,6 +68,39 @@ shift
 binary="$(cd "$(dirname "$binary")" && pwd)/$(basename "$binary")"
 source_dir="$(dirname "$binary")"
 exe="$(basename "$binary")"
+
+# What --run_under gets is the test executable, and for about half the standard library
+# suite that is not a Mojo binary. A mojo_test hands over its .exe and this script does the
+# obvious thing with it. A mojo_filecheck_test hands over a Python program that runs a
+# binary and pipes its output into FileCheck, and a lit test hands over llvm-lit. Both of
+# those are py_test, and for a Windows target Bazel builds a py_test into a launcher .exe
+# whose job is to find a python.exe and hand it a script. Copying that to a machine which
+# has neither produces
+#
+#   python.exe: can't open file 'C:\...\test_negative_index_list.mojo.test'
+#
+# which is a report about this script dressed up as a report about the port. It was 109 of
+# the 119 tier 0 and tier 1 failures.
+#
+# A launcher is recognised by the launch data Bazel appends to it, whose first key is
+# binary_type, and the script it would have run sits beside it under the same name without
+# the .exe. That script is an ordinary Python program, so it runs here, and it gets
+# MOJO_WINDOWS_RUN pointing back at this script. A wrapper with a Windows binary among the
+# things it runs reads that and sends that one across itself, which is the level the
+# decision belongs at: the wrapper knows which of them was built for Windows, and by the
+# time a path reaches this script that information is gone.
+#
+# lit tests get the same passthrough for a different reason and want no more than it. They
+# drive the mojo driver at test time and it targets the host, so a lit test is a host test
+# under every configuration, and running it here is what it was always doing.
+host_stub="${binary%.exe}"
+if [ "$(head -c 2 "$binary")" != "MZ" ] ||
+  { [ -f "$host_stub" ] && tail -c 8192 "$binary" | grep -aq 'binary_type='; }; then
+  [ -f "$host_stub" ] || host_stub="$binary"
+  self="$REPO_ROOT/scripts/$(basename "${BASH_SOURCE[0]}")"
+  export MOJO_WINDOWS_RUN="$self"
+  exec "$host_stub" "$@"
+fi
 
 # A test that reads a file needs that file, and Bazel does not put it next to the binary.
 # It writes a runfiles manifest instead, mapping the path a test will ask for to wherever
@@ -159,7 +197,7 @@ if [ -n "${TEST_SRCDIR:-}" ]; then
       # The POSIX shell's and the system's.
       PATH | HOME | PWD | OLDPWD | SHELL | SHLVL | USER | LOGNAME | HOSTNAME) continue ;;
       TERM | TZ | TMPDIR | TMP | TEMP | LANG | LC_* | IFS | _) continue ;;
-      EDITOR | PAGER | SSH_* | XDG_* | BASH_* | WSL* | MOJO_WINDOWS_TEST_*) continue ;;
+      EDITOR | PAGER | SSH_* | XDG_* | BASH_* | WSL* | MOJO_WINDOWS_*) continue ;;
       HOSTTYPE | OSTYPE | MACHTYPE | LS_COLORS | COLORTERM | NAME) continue ;;
       # WSL's, describing a Linux desktop session that no Windows process shares.
       DISPLAY | WAYLAND_DISPLAY | PULSE_SERVER | PULSE_COOKIE) continue ;;

@@ -1,7 +1,7 @@
 """A test rule that executes a mojo_binary, passing its output to FileCheck."""
 
-load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel/internal:config.bzl", "GPU_TEST_ENV", "RUNTIME_SANITIZER_DATA", "get_default_exec_properties", "get_default_test_env", "runtime_sanitizer_env", "validate_gpu_tags")  # buildifier: disable=bzl-visibility
+load(":cross_platform_test.bzl", "py_test", "target_platform_binary")
 load(":mojo_binary.bzl", "mojo_binary")
 
 def mojo_filecheck_test(
@@ -72,6 +72,17 @@ def mojo_filecheck_test(
 
     default_exec_properties = get_default_exec_properties(tags, target_compatible_with)
 
+    # The binary under test is the one thing here that was built for the target. Everything
+    # else, this wrapper included, belongs to the machine running the build, and the py_test
+    # below is the one from cross_platform_test.bzl which says so. See that file.
+    target_platform_binary(
+        name = name + ".under_test",
+        binary = name + ".binary",
+        testonly = True,
+        tags = tags,
+        target_compatible_with = target_compatible_with,
+    )
+
     # The wrapper is Python and not a shell script because a Windows machine has
     # no bash, and Python is already a dependency of the build everywhere Bazel
     # runs. It reads the same environment variables either way, so the only thing
@@ -82,12 +93,12 @@ def mojo_filecheck_test(
         main = "//bazel/internal:mojo_filecheck_test.py",
         size = size,
         data = extra_data + data + srcs + [
-            name + ".binary",
+            name + ".under_test",
             "@llvm-project//llvm:FileCheck",
             "@llvm-project//llvm:not",
         ],
         env = env | GPU_TEST_ENV | runtime_sanitizer_env() | get_default_test_env(exec_properties) | {
-            "BINARY": "$(location :{}.binary)".format(name),
+            "BINARY": "$(location :{}.under_test)".format(name),
             "EXPECT_CRASH": "1" if expect_crash else "0",
             "EXPECT_FAIL": "1" if expect_fail else "0",
             "FILECHECK": "$(location @llvm-project//llvm:FileCheck)",

@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_mojo//mojo:toolchain.bzl", "mojo_copts_toolchain")
 load("@rules_mypy//mypy:mypy.bzl", "mypy_cli")
@@ -19,6 +20,14 @@ exports_files([
     # a label that does not end in .py.
     "mojo_filecheck_test.py",
 ])
+
+# On when the build is producing binaries for one machine and running its tests from
+# another, which here means --config=windows and nothing else. cross_platform_test.bzl
+# reads it and is a no op without it, so an ordinary build is unaffected.
+bool_flag(
+    name = "cross_test",
+    build_setting_default = False,
+)
 
 mypy_cli(
     name = "mypy_cli",

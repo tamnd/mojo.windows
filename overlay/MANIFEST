@@ -119,6 +119,8 @@ edit	97703532c465ffe3d7b8ab8f20ed36c2a84c53d9	bazel/internal/cc-toolchain/tools/
 edit	bbd8b61acf0020064c89e9eb1280984530b887e0	bazel/internal/cc-toolchain/tools/linker-driver.sh
 new	-	bazel/internal/cc-toolchain/windows_sysroot_repository.bzl
 edit	edb67a035194ce0b99f28058a68828d923170991	bazel/internal/config.bzl
+new	-	bazel/internal/cross_platform_test.bzl
+edit	56ca80da56af127f244a23d82d928732ffa90751	bazel/internal/lit.bzl
 edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.bazel
 edit	628de647178acb5de5fa6824e1a77ba303f5807c	bazel/internal/llvm-lit/validate_lit_features.py
 edit	968800b3e39de40eded9d1a4159c99415c2f6ada	bazel/internal/modular_shared_library.bzl
