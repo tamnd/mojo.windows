@@ -54,6 +54,15 @@ Worth knowing before reading it: on x86-64 a wrong width mostly does not show. E
 - `long` six at a time, nine at a time so three of them spill, next to types whose width is fixed, and with negative values so that a caller which zero extends where it should sign extend is caught. `long long` gets the same treatment as a control.
 - Bools six at a time, between wider arguments, and past the register file where a caller that packed them into less than a full stack slot would be visible. Plus the raw byte a bool arrives as, which is the weakest check here because the C compiler is allowed to normalise it and hide a bad caller.
 
+Variadic calls, in `varargs.mojo`. The one place the callee cannot see the signature, and the two conventions deal with that in opposite ways. Win64 hardly changes anything, except that a floating point variadic argument goes into the SSE register and into the integer register sharing its slot, because the callee walking a `va_list` reads the integer one. System V changes a lot: the callee spills the argument registers into a save area, and decides how many SSE registers to spill by reading AL, which the caller has to set to the number of vector registers it used.
+
+- Integers, doubles, and the two alternating, six at a time.
+- Eight doubles, which uses every SSE register either convention hands out and is where a wrong AL does the most damage.
+- Twelve integers, so the list runs off the end of the register save area and `va_arg` starts reading the caller's stack.
+- The default argument promotions, which are the caller's job: anything narrower than an int becomes an int and a float becomes a double.
+- A variadic call that returns a value, since none of the others do.
+- `snprintf` from the platform C runtime, which is the case that actually has to work. Everything else in this suite is a probe written alongside the test and compiled with the same assumptions. The C runtime shares neither, and it is what real code reaches for. C makes the same call into a buffer of its own and the two are compared, rather than comparing against a literal, because how a platform renders a double is not the thing under test.
+
 ## What is not covered yet
 
 `SIMD[DType.float32, 4]` against `__m128`, varargs, shadow space, the callee saved register set including the extra XMM registers Win64 preserves, stack alignment with no red zone, and structs containing arrays. Issue #13 tracks the rest.
