@@ -19,6 +19,7 @@ edit	6acb9727246db7b58efcfdfe27ac2338d5c7d015	Config/include/GeneratedVersion.h.
 edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
 edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 edit	59f6f330c21fe83dc6241eb535e4692521d45656	Mojo/lib/Compiler/ObjectCompiler/ObjectCompiler.cpp
+edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
 new	-	Mojo/test/kgen/kgen-tool/kgen-emit-shared-windows.mlir
 new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_link_line.mojo
@@ -30,8 +31,10 @@ edit	20fb58247a96ad23cf6fc3a6cba5f6fac51abb39	Support/include/Support/MicroBench
 edit	390a64081dec7c0a946f1f17d56765f40c0061e6	Support/include/Support/STLExtras.h
 edit	f00c8b1f7334a036e7a0bad8a85033a538f4f446	Support/include/Support/Threading/HWInfo.h
 new	-	Support/include/Support/WindowsHeader.h
+edit	f2cd28295720b632c7720fd13c1be590ce312465	Support/lib/BazelRunfiles.cpp
 edit	b8ab17ec375a32423ca610799241edb9c8fa4f4f	Support/lib/BinaryID.cpp
 edit	c84112691dafc1501f03d7eab07b2aae2505f985	Support/lib/CPUCache.cpp
+edit	f538b5ba52b519dacb83f37f1c911e5ba4fe9735	Support/lib/Configuration.cpp
 edit	522cca99a76aed3c491be40b8118214dc2305171	Support/lib/CrashReporting/CrashReporting.cpp
 new	-	Support/lib/CrashReporting/CrashReportingUnsupported.cpp
 edit	ee092edd6b4e4af796fd1d255e391d9ff056e1be	Support/lib/Debugger.cpp
@@ -40,6 +43,8 @@ edit	a8726b6e49d8730fa003dd3e3222a6c595ae8307	Support/lib/NixlPluginDir.cpp
 new	-	Support/lib/NixlPluginDirUnsupported.cpp
 edit	466c80292741c3d6ce1efc0edf6f12d2c0e19d41	Support/lib/Telemetry/TelemetryContext.cpp
 edit	00aaab4595f1ddd350c9ce5cfcb5dd96f7055528	Support/lib/Threading/HWInfo.cpp
+edit	fb5de8e3d95d9c7068fecc4b83a88db4c1439496	Support/unittests/BUILD.bazel
+new	-	Support/unittests/PlatformLibNamesTest.cpp
 edit	89d6d145bfd81c68ccc082d95bcede0896d545da	bazel/api.bzl
 edit	774a4f8fe6035ef5b580ca83876cc3828ee239a4	bazel/common.MODULE.bazel
 edit	586cd6589ac54d9adfa57362c41dc733abe08071	bazel/config.bzl
