@@ -61,6 +61,7 @@ edit	0dbca73e4d281ba6bf9f44a66213650c71e90aa5	Mojo/stdlib/test/os/path/test_spli
 edit	95aadc3a106352a3bc1b38de7dc5a6756e545d96	Mojo/stdlib/test/os/test_stat.mojo
 edit	8d230683111ef8dcb245d9ab9d584374e671cec5	Mojo/stdlib/test/pathlib/test_pathlib.mojo
 edit	1e7a5e4e7b567b1f626efe9583ec968e78c3c901	Mojo/stdlib/test/sys/BUILD.bazel
+edit	2c2f458f79364ecf7ba0f924a3bbb84da1158d09	Mojo/stdlib/test/sys/test_c_types.mojo
 edit	e0df474d713fab3ddf649b784ebeb78a0e09a78b	Mojo/stdlib/test/sys/test_dlhandle.mojo
 new	-	Mojo/stdlib/test/sys/test_os_predicates.mojo
 edit	5d311b0c5c7ec6065b549dd7bfdfd80f46a05a6b	Mojo/stdlib/test/time/test_time.mojo
