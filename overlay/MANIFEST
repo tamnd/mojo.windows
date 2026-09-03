@@ -33,6 +33,11 @@ edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
 edit	132e3af2f21a2d42a3611c9a4d53ff45fcecaa28	Mojo/stdlib/std/sys/info.mojo
 edit	1e7a5e4e7b567b1f626efe9583ec968e78c3c901	Mojo/stdlib/test/sys/BUILD.bazel
 new	-	Mojo/stdlib/test/sys/test_os_predicates.mojo
+new	-	Mojo/test/abi-conformance/BUILD.bazel
+new	-	Mojo/test/abi-conformance/README.md
+new	-	Mojo/test/abi-conformance/abi_probe/__init__.mojo
+new	-	Mojo/test/abi-conformance/probe.c
+new	-	Mojo/test/abi-conformance/scalars.mojo
 new	-	Mojo/test/kgen/kgen-tool/kgen-emit-shared-windows.mlir
 new	-	Mojo/test/kgen/pop-to-llvm/extern-c-abi-win64.mlir
 new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo

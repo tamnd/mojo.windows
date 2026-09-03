@@ -1,0 +1,52 @@
+load("//bazel:api.bzl", "modular_cc_library", "modular_run_binary_test", "mojo_binary", "mojo_library")
+
+package(default_visibility = ["//visibility:private"])
+
+# The ground truth. Compiled by whichever C compiler the toolchain is pointed
+# at, so what it does with its arguments is the platform ABI by definition
+# rather than by anyone's reading of the specification.
+#
+# alwayslink because nothing on the C side references these and the Mojo side
+# reaches them through external_call, which the linker sees as an ordinary
+# undefined symbol. That is enough on ELF, and it is not enough with lld-link,
+# which ignores whole archive inclusion the way GNU ld understands it. See
+# issue #149.
+modular_cc_library(
+    name = "probe",
+    testonly = True,
+    srcs = ["probe.c"],
+    alwayslink = True,
+)
+
+mojo_library(
+    name = "abi_probe",
+    testonly = True,
+    srcs = ["abi_probe/__init__.mojo"],
+    deps = [
+        ":probe",
+        "@mojo//:std",
+    ],
+)
+
+mojo_binary(
+    name = "scalars",
+    testonly = True,
+    srcs = ["scalars.mojo"],
+    deps = [
+        ":abi_probe",
+        "@mojo//:std",
+    ],
+)
+
+# The binary's exit code is the test result. It prints one line per failing
+# check and nothing at all when it passes, so a green run is silent and a red
+# one names the signature and the argument position that went wrong.
+#
+# This runs on whatever platform the build is configured for, which in practice
+# is the host. Running the Windows build of it needs a Windows machine in front
+# of a Bazel test, which is issue #22.
+modular_run_binary_test(
+    name = "scalars_test",
+    size = "small",
+    binary = "scalars",
+)
