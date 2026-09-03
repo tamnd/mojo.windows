@@ -156,7 +156,20 @@ If you ever do end up running one of these without its DLLs, the symptom is noth
 
 ## Testing a cross build
 
-Bazel cannot natively run a Windows test from a Linux execution host. Start with `--run_under` and a small script that copies the binary over SSH and runs it. Roughly forty lines, and it gives a real Windows signal immediately. Bazel remote execution with a Windows executor is the architecturally correct answer and is worth doing later, once the shim's overhead is what is slowing you down.
+Bazel cannot natively run a Windows test from a Linux execution host. `scripts/run-on-windows.sh` is the shim that gets around that. It takes a Windows binary, puts it and the DLLs beside it on a Windows machine, runs it, gives you back its exit code and its output, and deletes what it copied. Hand it to Bazel as `--run_under`, or call it directly on a path.
+
+```sh
+./bazelw run --config=build-mojo --config=windows \
+  --repo_env=MOJO_WINDOWS_SYSROOT=/path/windows-sysroot.sh/printed \
+  --run_under="$PWD/../../scripts/run-on-windows.sh" \
+  //Mojo/test/abi-conformance:frames
+```
+
+The machine comes from the environment and there is no default, which is the policy at the bottom of this page rather than an oversight. Set `MOJO_WINDOWS_TEST_HOST` to an ssh destination and it copies with `scp` and runs over `ssh`, staging under `C:\mojo-test` or wherever `MOJO_WINDOWS_TEST_DIR` points. Set `MOJO_WINDOWS_TEST_STAGE` instead, to a directory under `/mnt/` that the Windows side can see, and it uses WSL interop: the copy is a file copy and the run is executing the `.exe`, which WSL starts as a real Windows process and whose exit code it hands straight back. That second one is for when the Linux side doing the build is WSL on the same machine as the Windows side, which is a common enough way to have one machine do both jobs to be worth forty lines.
+
+Neither transport is emulation. Both start the same PE on the same Windows kernel, and the only difference is how the bytes got there.
+
+What this is not is Bazel remote execution with a Windows executor, which is the architecturally correct answer and is worth doing once the shim's overhead is what is slowing you down. It is also not yet wired into `bazel test`, because the test targets go through a wrapper that is itself a Linux program. `bazel run` on the binary works today.
 
 Do not use Wine. It emulates the OS, so a failure is ambiguous between our bug and Wine's bug, which defeats the purpose when the thing you are validating is ABI conformance.
 
