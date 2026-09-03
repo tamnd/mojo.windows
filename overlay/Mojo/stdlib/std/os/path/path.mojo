@@ -39,6 +39,11 @@ from .._windows import _stat as _stat_windows
 from ..env import getenv
 from ..fstat import stat
 from ..os import sep
+from ._windows import _expanduser as _expanduser_windows
+from ._windows import _is_absolute as _is_absolute_windows
+from ._windows import _join as _join_windows
+from ._windows import _split as _split_windows
+from ._windows import _splitroot as _splitroot_windows
 
 
 # ===----------------------------------------------------------------------=== #
@@ -110,6 +115,13 @@ def expanduser[PathLike: stdPathLike, //](path: PathLike) raises -> String:
     If the home directory cannot be determined, or the `path` is not prefixed
     with "~", the original path is returned unchanged.
 
+    On Windows the home directory comes from `USERPROFILE`, or from `HOMEDRIVE`
+    and `HOMEPATH` together when that is not set, because there is no password
+    database to look a user up in. `~user` is a guess there: Windows profile
+    directories usually sit side by side under one parent and are named after
+    the user, so the current user's home is used to work out the shape. If it
+    does not fit that shape the path comes back unexpanded.
+
     Parameters:
         PathLike: The type conforming to the os.PathLike trait.
 
@@ -123,6 +135,10 @@ def expanduser[PathLike: stdPathLike, //](path: PathLike) raises -> String:
         If the operation fails.
     """
     var fspath = path.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _expanduser_windows(fspath)
+
     if not fspath.startswith("~"):
         return fspath
     var userhome = _user_home_path(fspath)
@@ -261,6 +277,10 @@ def dirname[PathLike: stdPathLike, //](path: PathLike) -> String:
     ```
     """
     var fspath = path.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _split_windows(fspath)[0]
+
     var i = fspath.rfind(sep) + 1
     var head = String(fspath[byte=:i])
     if head and head != sep * head.byte_length():
@@ -417,6 +437,12 @@ def is_absolute[PathLike: stdPathLike, //](path: PathLike) -> Bool:
     """Return True if `path` is an absolute path name.
     On Unix, that means it begins with a slash.
 
+    On Windows it means a drive letter followed by a separator, such as `C:\\`,
+    or two leading separators, which is a network share or a device path. A
+    leading separator on its own is not enough, and neither is a drive letter on
+    its own: `\\Windows` and `C:Windows` are both measured from a current
+    directory, so neither of them names one place.
+
     Parameters:
         PathLike: The type conforming to the os.PathLike trait.
 
@@ -434,7 +460,12 @@ def is_absolute[PathLike: stdPathLike, //](path: PathLike) -> Bool:
     print(is_absolute("relative")) # False
     ```
     """
-    return path.__fspath__().startswith(sep)
+    var fspath = path.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _is_absolute_windows(fspath)
+
+    return fspath.startswith(sep)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -467,6 +498,16 @@ def join(var path: String, *paths: String) -> String:
     ```
     """
     var joined_path = path^
+
+    comptime if CompilationTarget.is_windows():
+        # The Windows rules are in `_windows.mojo` and there are enough of them
+        # to be worth reading there. Joining a pair at a time gives the same
+        # answer as taking all of them at once, because the only piece of state
+        # that carries across a step is the drive, and that is recovered from
+        # the result of the previous step.
+        for cur_path in paths:
+            joined_path = _join_windows(joined_path, cur_path)
+        return joined_path^
 
     for cur_path in paths:
         if cur_path.startswith(sep):
@@ -511,6 +552,10 @@ def split[PathLike: stdPathLike, //](path: PathLike) -> Tuple[String, String]:
     ```
     """
     var fspath = path.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _split_windows(fspath)
+
     var i = fspath.rfind(sep) + 1
     var head, tail = fspath[byte=:i], fspath[byte=i:]
     if head and head != String(sep) * head.byte_length():
@@ -537,6 +582,10 @@ def basename[PathLike: stdPathLike, //](path: PathLike) -> String:
         The basename from the path.
     """
     var fspath = path.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _split_windows(fspath)[1]
+
     var i = fspath.rfind(sep) + 1
     var head = fspath[byte=i:]
     if head and head != sep * head.byte_length():
@@ -649,6 +698,11 @@ def splitroot[
 ](path: PathLike) -> Tuple[String, String, String]:
     """Splits `path` into drive, root and tail. The tail contains anything after the root.
 
+    The drive is always empty on Linux and macOS, which have no such idea. On
+    Windows it is a drive letter with its colon, or a whole `\\\\server\\share`,
+    and it is a separate value from the root because the two can appear without
+    each other and mean different things when they do.
+
     Parameters:
         PathLike: The type conforming to the os.PathLike trait.
 
@@ -659,6 +713,10 @@ def splitroot[
         A tuple containing three strings: (drive, root, tail).
     """
     var p = path.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _splitroot_windows(p)
+
     comptime empty = ""
     var length = p.byte_length()
 
