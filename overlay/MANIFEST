@@ -77,6 +77,9 @@ edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.baze
 edit	628de647178acb5de5fa6824e1a77ba303f5807c	bazel/internal/llvm-lit/validate_lit_features.py
 edit	968800b3e39de40eded9d1a4159c99415c2f6ada	bazel/internal/modular_shared_library.bzl
 edit	cedbc002df2a280bad77f4de603a073449fe858a	bazel/internal/modular_versioned_expand_template.bzl
+delete	a23635bad894c4d460fe37a926e066be71e42a1a	bazel/internal/mojo-filecheck-test.sh
+edit	1e1ce7ca3cb12b9107d22729a15c9d524812caeb	bazel/internal/mojo_filecheck_test.bzl
+new	-	bazel/internal/mojo_filecheck_test.py
 edit	4e7575d34ad20d592013a888c5cd56b37d372a48	bazel/internal/runtool-shim.cpp
 new	-	bazel/public-patches/boringssl_gnu_driver_flags.patch
 edit	5c97c045b3cd8aa6e59aa4706665ee70e85ac8ca	bazel/public-patches/crashpad.BUILD

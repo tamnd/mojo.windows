@@ -14,6 +14,10 @@ exports_files([
     "create_venv.py",
     "load_bazel_tools.py",
     "lsan-suppressions.txt",
+    # Exported rather than wrapped in a filegroup the way its predecessor was,
+    # because py_test resolves its `main` by looking at the file name and refuses
+    # a label that does not end in .py.
+    "mojo_filecheck_test.py",
 ])
 
 mypy_cli(
@@ -23,12 +27,6 @@ mypy_cli(
     deps = [
         requirement("pydantic"),
     ],
-)
-
-filegroup(
-    name = "mojo-filecheck-test",
-    testonly = True,
-    srcs = ["mojo-filecheck-test.sh"],
 )
 
 filegroup(
