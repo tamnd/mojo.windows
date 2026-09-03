@@ -230,13 +230,47 @@ cc_args(
             "-Wl,-no_warn_duplicate_libraries",
             "-Wl,-oso_prefix,.",  # Strip absolute paths from debug info file references
         ],
-        # Nothing to add. The Linux arm above is mostly ELF hardening and ELF dynamic
-        # tags, and the macOS arm is Mach-O install names, and COFF has neither concept.
-        # The CRT and the standard library arrive through the /DEFAULTLIB directives in
-        # the objects rather than through -l flags, which is why there is no Windows
-        # equivalent of -lm and -lstdc++ here. Undefined symbols are already an error for
-        # lld-link by default, so -Wl,-z,defs needs no counterpart either.
-        "@platforms//os:windows": [],
+        # None of the Linux arm carries over. That is mostly ELF hardening and ELF
+        # dynamic tags, and the macOS arm is Mach-O install names, and COFF has neither
+        # concept. The CRT and the standard library arrive through the /DEFAULTLIB
+        # directives that cl and clang put in the objects themselves, which is why there
+        # is no Windows equivalent of -lm and -lstdc++ here. Undefined symbols are
+        # already an error for lld-link by default, so -Wl,-z,defs needs no counterpart.
+        #
+        # What is here instead is the list every Windows build system has linked by
+        # default since the mid nineties. cl.exe links it, Bazel's own MSVC toolchain
+        # links it, and every CMake project on the platform gets it without asking. So
+        # third party code written for Windows assumes it is there and simply does not
+        # name these libraries, and it is not going to start. That is what happened to
+        # @bazel_tools//src/tools/launcher, which calls RegGetValueW and never mentions
+        # advapi32 because on Windows nobody has to.
+        #
+        # The rule for this tree, then. These ten are the toolchain's job and get named
+        # here. Anything outside the list is the target's job and gets named in its own
+        # linkopts, the way bcrypt is in mimalloc.BUILD and shlwapi is in the
+        # google_benchmark patch. The line is drawn where it is because we can edit our
+        # own targets and cannot edit somebody else's, not because these ten are special.
+        #
+        # An import an executable never calls costs a few bytes in the import table and
+        # nothing at runtime, since the loader binds thunks lazily per DLL actually used.
+        # Being wrong in this direction is cheap. Being wrong the other way is an
+        # undefined symbol at the end of a long link.
+        #
+        # -Wl, because clang's GNU driver reads a leading slash as a path, and because
+        # bare -DEFAULTLIB:advapi32.lib is parsed as -D EFAULTLIB:advapi32.lib, a macro
+        # definition, which links clean and drops the library on the floor.
+        "@platforms//os:windows": [
+            "-Wl,/DEFAULTLIB:advapi32.lib",
+            "-Wl,/DEFAULTLIB:comdlg32.lib",
+            "-Wl,/DEFAULTLIB:gdi32.lib",
+            "-Wl,/DEFAULTLIB:kernel32.lib",
+            "-Wl,/DEFAULTLIB:ole32.lib",
+            "-Wl,/DEFAULTLIB:oleaut32.lib",
+            "-Wl,/DEFAULTLIB:shell32.lib",
+            "-Wl,/DEFAULTLIB:user32.lib",
+            "-Wl,/DEFAULTLIB:uuid.lib",
+            "-Wl,/DEFAULTLIB:winspool.lib",
+        ],
     }) + select({
         # Sanitizers are split across multiple libraries, some of which aren't linked to shared libraries
         "//:asan_linux": ["-Wl,-z,undefs"],
