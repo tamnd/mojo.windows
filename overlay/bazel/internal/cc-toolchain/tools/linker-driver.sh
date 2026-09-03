@@ -73,8 +73,36 @@ done
 # both into the toolchain under one name and fails analysis on every platform. The
 # alternative was to copy rules_cc's twenty five entry feature list into our own
 # BUILD file minus one line, and then keep that copy in step forever.
+#
+# The same loop translates whole archive inclusion, which is a rewrite rather than
+# a removal. A cc_library marked alwayslink reaches the link line as
+#
+#   -Wl,-whole-archive libfoo.a -Wl,-no-whole-archive
+#
+# where the two markers bracket a run of archives and mean "keep every object in
+# these, referenced or not". lld-link does not know either marker, says so, and
+# carries on, so every object nobody references is dropped. That is the quiet kind
+# of wrong: the link succeeds, and what goes missing is static initializers and
+# anything else registered by side effect at load time, which is found much later as
+# a registry with holes in it rather than as a link error.
+#
+# The MSVC spelling is /WHOLEARCHIVE:<library>, which names one archive instead of
+# opening a region, so each file between the markers gets its own. The archive still
+# has to appear on the line as an input, because the flag says how to treat it and
+# not that it is there, so the original argument is kept and the flag goes in front
+# of it. Anything starting with a dash between the markers is left alone: Bazel puts
+# only inputs there, and an option that turned up would be an option and not a name.
+#
+# Done here for the same reason as the rpath filtering above. rules_cc's own
+# libraries_to_link feature already spells --start-lib the Windows way, so it has
+# been through this once, but it hardcodes -Wl,-whole-archive everywhere except
+# Apple, and it arrives through experimental_replace_legacy_action_config_features
+# as one entry in a list this toolchain takes whole. Overriding it is not possible
+# either, since it is itself the override of the legacy feature, and only a legacy
+# feature can be overridden.
 if [[ "${WINDOWS:-}" == "true" ]]; then
   filtered_args=()
+  whole_archive=false
   i=0
   while ((i < ${#linker_args[@]})); do
     arg="${linker_args[i]}"
@@ -93,7 +121,20 @@ if [[ "${WINDOWS:-}" == "true" ]]; then
         i=$((i + 1))
         continue
         ;;
+      -Wl,-whole-archive | -Wl,--whole-archive)
+        whole_archive=true
+        i=$((i + 1))
+        continue
+        ;;
+      -Wl,-no-whole-archive | -Wl,--no-whole-archive)
+        whole_archive=false
+        i=$((i + 1))
+        continue
+        ;;
     esac
+    if [[ "$whole_archive" == "true" && "$arg" != -* ]]; then
+      filtered_args+=("-Wl,/WHOLEARCHIVE:$arg")
+    fi
     filtered_args+=("$arg")
     i=$((i + 1))
   done
