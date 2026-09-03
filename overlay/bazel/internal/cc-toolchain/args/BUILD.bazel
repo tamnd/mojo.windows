@@ -283,6 +283,23 @@ cc_args(
         "//:modular_config_coverage": ["-fprofile-instr-generate"],
         "//conditions:default": [],
     }),
+    # linker-driver.sh strips the $ORIGIN rpath entries rules_cc generates for every
+    # directory a target's dynamic dependencies live in, because lld-link has no -rpath
+    # and reads the path that follows it as an input file. The driver runs on the host
+    # and cannot tell what it is linking for, so it needs to be told, and this is where
+    # it gets told.
+    #
+    # It used to be told by the interface library feature instead, which was wrong in a
+    # way that only showed up on executables: that feature applies to dynamic library
+    # link actions, so shared libraries got their rpaths stripped and binaries did not.
+    # A cc_binary with a shared dependency still failed on "could not open
+    # '$ORIGIN/../../_solib_win64/_USupport'" long after the fix was supposedly in.
+    # Every link action needs the answer, not just the ones that also produce an import
+    # library, so it belongs here with the rest of the link arguments.
+    env = select({
+        "@platforms//os:windows": {"WINDOWS": "true"},
+        "//conditions:default": {},
+    }),
 )
 
 cc_args(
