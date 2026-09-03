@@ -21,6 +21,8 @@
 #   MOJO_WINDOWS_TEST_DIR        staging directory on the Windows side, default C:\mojo-test
 #   MOJO_WINDOWS_TEST_STAGE      a directory the Windows machine can see, for the wsl transport
 #   MOJO_WINDOWS_TEST_TRANSPORT  ssh or wsl, inferred from the two above when unset
+#   MOJO_WINDOWS_TEST_ENV        NAME=VALUE lines to set on the far side, one per line
+#   MOJO_WINDOWS_TEST_VERBOSE    set to anything to print the environment being set
 #
 # Two transports because there are two situations, not because one of them was
 # insufficiently thought about.
@@ -33,6 +35,17 @@
 # because WSL interop starts it as a real Windows process and hands back its exit code.
 # No network, no second set of credentials, and nothing about it is emulation: it is the
 # same Windows kernel running the same PE that ssh would have started.
+#
+# The wsl transport under bazel test needs three flags that are not obvious and that fail
+# in ways which do not name WSL:
+#
+#   --strategy=TestRunner=local
+#   --test_env=WSL_INTEROP --test_env=WSL_DISTRO_NAME
+#
+# The sandbox has /mnt/c read only, so staging into it fails with "mkdir: Read-only file
+# system" and never reaches Windows. Interop is a vsock to a server on the Windows side
+# and the two variables are how a process finds it, so without them the exec times out as
+# "UtilAcceptVsock:273: accept4 failed 110" and looks like a broken binary.
 
 # shellcheck source=scripts/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
@@ -102,6 +115,96 @@ stage_into() {
   fi
 }
 
+# A Bazel test target can declare environment variables, and the test that reads one is
+# entitled to find it there. Nothing crosses to the Windows side by itself: the ssh
+# transport starts a fresh cmd, and WSL hands a Windows process only the variables named
+# in WSLENV. So the ones that should travel are collected here and set on the far side by
+# whichever transport is in use.
+#
+# Which ones should travel is the only interesting question, and the answer depends on who
+# is running this. Under --run_under the environment is Bazel's: it scrubs the client's
+# shell and builds a small one from the target's env attribute, --test_env and its own
+# bookkeeping. Taking all of that minus a deny list is safe and is what happens below.
+#
+# Run by hand from a terminal the environment is a person's login shell, which on a
+# developer machine holds API tokens, cloud credentials and whatever else is exported in a
+# profile. Sweeping that to another machine over ssh is not a thing this script should do
+# quietly, and no test needs it, so outside Bazel nothing is swept and MOJO_WINDOWS_TEST_ENV
+# names what crosses. TEST_SRCDIR is the test for which situation this is, because Bazel
+# sets it for every test it runs and nothing else does.
+declare -a env_names=() env_values=()
+
+put_env() {
+  local name="$1" value="$2" i
+  for i in "${!env_names[@]}"; do
+    if [ "${env_names[i]}" = "$name" ]; then
+      env_values[i]="$value"
+      return
+    fi
+  done
+  env_names+=("$name")
+  env_values+=("$value")
+}
+
+# Bazel's own variables are listed one at a time rather than caught with a TEST_ prefix,
+# which would be shorter and would also drop TEST_MYVAR, the variable this entire section
+# exists to deliver. Within Bazel's environment a name that is new and unrecognised gets
+# passed along, which is the right way round to be wrong: an extra variable on the far
+# side costs nothing, and a missing one is the silent failure being fixed.
+if [ -n "${TEST_SRCDIR:-}" ]; then
+  while IFS='=' read -r -d '' name value; do
+    case "$name" in
+      # Not something a Windows process could name, whatever it is.
+      '' | [0-9]* | *[!A-Za-z0-9_]*) continue ;;
+      # The POSIX shell's and the system's.
+      PATH | HOME | PWD | OLDPWD | SHELL | SHLVL | USER | LOGNAME | HOSTNAME) continue ;;
+      TERM | TZ | TMPDIR | TMP | TEMP | LANG | LC_* | IFS | _) continue ;;
+      EDITOR | PAGER | SSH_* | XDG_* | BASH_* | WSL* | MOJO_WINDOWS_TEST_*) continue ;;
+      HOSTTYPE | OSTYPE | MACHTYPE | LS_COLORS | COLORTERM | NAME) continue ;;
+      # WSL's, describing a Linux desktop session that no Windows process shares.
+      DISPLAY | WAYLAND_DISPLAY | PULSE_SERVER | PULSE_COOKIE) continue ;;
+      DBUS_SESSION_BUS_ADDRESS) continue ;;
+      # Bazel's. TEST_TMPDIR is here because it is replaced later rather than dropped.
+      TEST_SRCDIR | TEST_TMPDIR | TEST_BINARY | TEST_NAME | TEST_TARGET) continue ;;
+      TEST_SIZE | TEST_TIMEOUT | TEST_WORKSPACE | TEST_RANDOM_SEED) continue ;;
+      TEST_RUN_NUMBER | TEST_TOTAL_SHARDS | TEST_SHARD_INDEX) continue ;;
+      TEST_SHARD_STATUS_FILE | TEST_PREMATURE_EXIT_FILE) continue ;;
+      TEST_INFRASTRUCTURE_FAILURE_FILE | TEST_WARNINGS_OUTPUT_FILE) continue ;;
+      TEST_LOGSPLITTER_OUTPUT_FILE | TEST_UNDECLARED_OUTPUTS_DIR) continue ;;
+      TEST_UNDECLARED_OUTPUTS_MANIFEST | TEST_UNDECLARED_OUTPUTS_ANNOTATIONS) continue ;;
+      TEST_UNDECLARED_OUTPUTS_ANNOTATIONS_DIR | XML_OUTPUT_FILE) continue ;;
+      RUNFILES_DIR | RUNFILES_MANIFEST_FILE | RUNFILES_MANIFEST_ONLY) continue ;;
+      JAVA_RUNFILES | PYTHON_RUNFILES | RUN_UNDER_RUNFILES) continue ;;
+      BAZEL_TEST | GTEST_TMP_DIR) continue ;;
+    esac
+    put_env "$name" "$value"
+  done < <(env -0)
+fi
+
+# One NAME=VALUE per line, so a value is free to contain spaces, an equals sign or a
+# semicolon, none of which are unusual in a path.
+if [ -n "${MOJO_WINDOWS_TEST_ENV:-}" ]; then
+  while IFS= read -r pair; do
+    [ -n "$pair" ] || continue
+    case "$pair" in
+      *=*) put_env "${pair%%=*}" "${pair#*=}" ;;
+      *) die "MOJO_WINDOWS_TEST_ENV holds NAME=VALUE lines, and this one is '$pair'" ;;
+    esac
+  done <<<"$MOJO_WINDOWS_TEST_ENV"
+fi
+
+# A variable that quietly does not arrive is the failure this section exists to fix, so
+# there is a way to see what was sent without reading the transport's quoting. Off by
+# default because under Bazel this would print on every test.
+report_env() {
+  [ -n "${MOJO_WINDOWS_TEST_VERBOSE:-}" ] || return 0
+  local i
+  info "setting ${#env_names[@]} variables on the Windows side"
+  for i in "${!env_names[@]}"; do
+    info "  ${env_names[i]}=${env_values[i]}"
+  done
+}
+
 transport="${MOJO_WINDOWS_TEST_TRANSPORT:-}"
 if [ -z "$transport" ]; then
   if [ -n "${MOJO_WINDOWS_TEST_HOST:-}" ]; then
@@ -135,7 +238,13 @@ case "$transport" in
     # cmd, which does not know any of these names, so escaping them for it would send it
     # a variable reference it would leave as literal text.
     # shellcheck disable=SC2029
-    ssh "$host" "mkdir \"$remote\"" >/dev/null
+    ssh "$host" "mkdir \"$remote\\_tmp\"" >/dev/null
+
+    # Bazel gives a test a scratch directory of its own and tells it where through
+    # TEST_TMPDIR, and whatever it was pointing at was a Linux path. This one is a
+    # Windows path, it goes away with the rest of the staging directory, and it means a
+    # test writing a temporary file writes it somewhere rather than into the root of C.
+    put_env TEST_TMPDIR "$remote\\_tmp"
 
     # Kept as a trap rather than a line at the end, because a test that fails is the
     # normal case here and leaving a directory behind on every red run adds up.
@@ -152,9 +261,19 @@ case "$transport" in
     # is several directories deep once there are runfiles in it.
     run_win="${run_rel//\//\\}"
 
+    # set "NAME=VALUE" rather than set NAME=VALUE, which is the form that survives a
+    # value with a space or an ampersand in it. A percent sign in a value is still a
+    # percent sign to cmd and would be read as a variable reference, which is a real
+    # limitation and not one worth an escaping layer until something hits it.
+    report_env
+    env_prefix=""
+    for i in "${!env_names[@]}"; do
+      env_prefix+="set \"${env_names[i]}=${env_values[i]}\" && "
+    done
+
     set +e
     # shellcheck disable=SC2029
-    ssh "$host" "cd \"$remote\" && .\\$run_win $*"
+    ssh "$host" "cd \"$remote\" && $env_prefix.\\$run_win $*"
     status=$?
     set -e
     exit "$status"
@@ -170,6 +289,28 @@ case "$transport" in
     trap 'rm -rf "$remote"' EXIT
     stage_into "$remote"
     chmod +x "$remote/$run_rel"
+
+    need wslpath
+    mkdir -p "$remote/_tmp"
+    put_env TEST_TMPDIR "$(wslpath -w "$remote/_tmp")"
+
+    # WSL interop does not hand a Windows process the Linux environment. Exporting a
+    # variable here is not enough and not close to enough: cmd.exe started from this side
+    # prints back the literal %NAME% for anything that was only exported. WSLENV is the
+    # list of names that do cross, colon separated, and a name in it with no trailing
+    # flags crosses with its value exactly as it is. That last part matters, because the
+    # flag that would otherwise be tempting, /p, translates the value as a path, and a
+    # TEST_TMPDIR already spelled the Windows way would come out mangled.
+    #
+    # Whatever WSLENV already held is kept in front rather than overwritten, since the
+    # session may be forwarding something of its own and this script has no business
+    # deciding that it should not.
+    report_env
+    for i in "${!env_names[@]}"; do
+      export "${env_names[i]}=${env_values[i]}"
+      WSLENV="${WSLENV:+$WSLENV:}${env_names[i]}"
+    done
+    export WSLENV
 
     set +e
     (cd "$remote" && "./$run_rel" "$@")
