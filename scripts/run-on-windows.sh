@@ -111,15 +111,39 @@ fi
 # Only the entries under _main are copied. That is the binary, the DLLs beside it, and the
 # data, which is nine files for a stdlib test. The rest of the manifest is a whole CPython
 # for Windows, a couple of thousand files, and nothing that runs today reads any of it.
-manifest="$binary.runfiles_manifest"
+#
+# Where that manifest is depends on who is running this, and there are three answers. Bazel
+# sets RUNFILES_MANIFEST_FILE when the tree is manifest only. Otherwise it builds a real
+# symlink tree, names it in RUNFILES_DIR and puts a MANIFEST of the same format inside, and
+# that is the case under --run_under, where the path handed over is already inside the tree
+# and has no manifest beside it. Naming bazel-bin/.../foo.exe yourself is the third, and
+# that one does have a sibling.
+#
+# Only the third was being looked at, so every test run through --run_under fell through to
+# the no manifest branch, which stages the executable and the libraries and nothing else.
+# The test then ran with its data absent and reported a missing file, which reads like path
+# handling on Windows and is not. Falling back says so now rather than doing it quietly.
+manifest=""
+for candidate in \
+  "${RUNFILES_MANIFEST_FILE:-}" \
+  "${RUNFILES_DIR:+$RUNFILES_DIR/MANIFEST}" \
+  "$binary.runfiles_manifest"; do
+  if [ -n "$candidate" ] && [ -f "$candidate" ]; then
+    manifest="$candidate"
+    break
+  fi
+done
+
 run_rel="$exe"
-if [ -f "$manifest" ]; then
+if [ -n "$manifest" ]; then
   run_rel="$(awk -v exe="$exe" '
     $1 ~ /^_main\// {
       n = split($1, parts, "/")
       if (parts[n] == exe) { sub(/^_main\//, "", $1); print $1; exit }
     }' "$manifest")"
   [ -n "$run_rel" ] || die "$exe is not listed in $manifest"
+else
+  info "no runfiles manifest for $exe, so only it and the libraries beside it are staged"
 fi
 
 # Copies everything the binary needs into a directory, keeping the shape the test expects
@@ -127,7 +151,7 @@ fi
 stage_into() {
   local root="$1"
   mkdir -p "$root"
-  if [ -f "$manifest" ]; then
+  if [ -n "$manifest" ]; then
     local dest src rel
     while read -r dest src; do
       case "$dest" in
@@ -139,7 +163,9 @@ stage_into() {
       fi
       rel="${dest#_main/}"
       mkdir -p "$root/$(dirname "$rel")"
-      cp -L "$src" "$root/$rel"
+      # A tree artifact is one manifest entry and a directory on disk, so the recursive
+      # copy is not optional even though almost every entry is a single file.
+      cp -RL "$src" "$root/$rel"
     done < "$manifest"
   else
     # No manifest, so the binary is not a Bazel test and the DLLs beside it are all it
