@@ -63,6 +63,12 @@ Variadic calls, in `varargs.mojo`. The one place the callee cannot see the signa
 - A variadic call that returns a value, since none of the others do.
 - `snprintf` from the platform C runtime, which is the case that actually has to work. Everything else in this suite is a probe written alongside the test and compiled with the same assumptions. The C runtime shares neither, and it is what real code reaches for. C makes the same call into a buffer of its own and the two are compared, rather than comparing against a literal, because how a platform renders a double is not the thing under test.
 
+Vectors, in `vectors.mojo`. The sharpest disagreement left. System V gives a sixteen byte vector a class of its own and passes it in an SSE register. Win64 has no such class and nothing it considers wide enough, so the vector is copied to memory and passed as a pointer, and it comes back through a hidden pointer the caller supplies. This is not a special case of the struct rules: sixteen bytes of two doubles in a struct and sixteen bytes of two doubles in a vector are the same size and System V treats them differently, which the fault injection below confirms.
+
+- `SIMD[DType.float32, 4]`, `SIMD[DType.float64, 2]` and `SIMD[DType.int32, 4]` against the matching `vector_size(16)` types in C, all three sixteen bytes and all three the same class, since both conventions classify by width rather than by element type.
+- Two vectors, a vector with scalars after it, scalars with a vector after them, and five vectors so the last of them are on the stack under both conventions and by different arithmetic.
+- Returns, including a return from a call that has already spent its register slots, which is where the hidden pointer and the arguments compete for the same places.
+
 ## What is not covered yet
 
-`SIMD[DType.float32, 4]` against `__m128`, varargs, shadow space, the callee saved register set including the extra XMM registers Win64 preserves, stack alignment with no red zone, and structs containing arrays. Issue #13 tracks the rest.
+Shadow space, stack alignment with no red zone, the callee saved register set including the extra XMM registers Win64 preserves, structs containing arrays, and a struct containing a C `long`. The register set is the one that needs C to call into Mojo rather than the other way round, which needs COFF exports and is issue #134. Issue #13 tracks the rest.

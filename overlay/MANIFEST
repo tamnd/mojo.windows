@@ -41,10 +41,12 @@ new	-	Mojo/test/abi-conformance/probe.c
 new	-	Mojo/test/abi-conformance/probe.h
 new	-	Mojo/test/abi-conformance/probe_structs.c
 new	-	Mojo/test/abi-conformance/probe_varargs.c
+new	-	Mojo/test/abi-conformance/probe_vectors.c
 new	-	Mojo/test/abi-conformance/probe_widths.c
 new	-	Mojo/test/abi-conformance/scalars.mojo
 new	-	Mojo/test/abi-conformance/structs.mojo
 new	-	Mojo/test/abi-conformance/varargs.mojo
+new	-	Mojo/test/abi-conformance/vectors.mojo
 new	-	Mojo/test/abi-conformance/widths.mojo
 new	-	Mojo/test/kgen/kgen-tool/kgen-emit-shared-windows.mlir
 new	-	Mojo/test/kgen/pop-to-llvm/extern-c-abi-win64.mlir

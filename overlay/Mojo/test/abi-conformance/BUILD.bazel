@@ -18,6 +18,7 @@ modular_cc_library(
         "probe.c",
         "probe_structs.c",
         "probe_varargs.c",
+        "probe_vectors.c",
         "probe_widths.c",
     ],
     hdrs = ["probe.h"],
@@ -103,4 +104,20 @@ modular_run_binary_test(
     name = "varargs_test",
     size = "small",
     binary = "varargs",
+)
+
+mojo_binary(
+    name = "vectors",
+    testonly = True,
+    srcs = ["vectors.mojo"],
+    deps = [
+        ":abi_probe",
+        "@mojo//:std",
+    ],
+)
+
+modular_run_binary_test(
+    name = "vectors_test",
+    size = "small",
+    binary = "vectors",
 )
