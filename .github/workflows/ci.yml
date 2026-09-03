@@ -115,15 +115,23 @@ jobs:
           GIT_AUTHOR_NAME: ci
           GIT_AUTHOR_EMAIL: ci@localhost
 
-  # Placeholder for the real thing. From M1 this builds the compiler for a Windows
-  # target on a Linux host and stops being a no-op. Kept here from the start so the
-  # job name is stable in branch protection.
+  # Still a placeholder, and the reason is not that the cross build does not work.
+  # It does, on a developer machine, and the ABI conformance suite is cross built
+  # and run green on Windows that way. What is missing is a runner that can do it:
+  # the build needs the whole compiler from source, which is hours on a hosted
+  # runner, plus a Windows sysroot the runner would have to assemble first. So the
+  # honest options are a cache large enough to matter or a self hosted runner, and
+  # a self hosted runner on a public repository is a decision with security
+  # consequences rather than a piece of plumbing.
+  #
+  # Kept here so the job name stays stable in branch protection. See issue #13 for
+  # the gate this is supposed to become and issue #22 for running the result.
   cross-build:
     name: Cross build (windows-x86_64)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Not implemented yet
+      - name: Not wired up yet
         run: |
-          echo "Cross building for Windows lands in milestone M1."
-          echo "See https://github.com/tamnd/mojo.windows/milestones"
+          echo "The cross build works locally. What is missing is a runner that can afford it."
+          echo "See https://github.com/tamnd/mojo.windows/issues/13"
