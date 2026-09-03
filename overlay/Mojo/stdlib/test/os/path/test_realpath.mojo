@@ -57,14 +57,16 @@ def test_realpath() raises:
 
     print("error handling for non-existent paths")
     # Both platforms fail here and neither writes the reason itself, so the
-    # sentence is whatever the system says and the two do not agree on the
-    # words.
-    comptime windows_missing = "The system cannot find the file specified."
-    comptime posix_missing = "No such file or directory"
-    comptime missing = (
-        windows_missing if CompilationTarget.is_windows() else posix_missing
+    # sentence is whatever the system says, and the two now say the same thing.
+    # They did not always. Windows resolves a name through Win32 rather than
+    # through the C runtime, and Win32 reports through GetLastError, which has
+    # its own numbering and its own wording, so what came back here used to be
+    # "The system cannot find the file specified." instead. `_realpath` runs
+    # the code through `errno_from_win32` and reports the errno, the way the
+    # POSIX one always did.
+    var message = String(
+        "realpath failed to resolve: No such file or directory"
     )
-    var message = String("realpath failed to resolve: ", missing)
     with assert_raises(contains=message):
         _ = realpath("does-not-exist")
 

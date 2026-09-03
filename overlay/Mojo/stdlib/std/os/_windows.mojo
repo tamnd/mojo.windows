@@ -53,6 +53,7 @@ different question. See the last section.
 
 from std.collections import Array
 from std.ffi import external_call
+from std.sys._libc_errno import errno_from_win32, get_errno, set_errno
 from std.stat.stat import S_IFLNK
 from std.sys import align_of, size_of
 from std.sys._win import (
@@ -864,7 +865,12 @@ def _realpath(var path: String) raises -> String:
     var handle = _open_for_query(wide)
     _ = wide^
     if handle == _INVALID_HANDLE_VALUE:
-        raise Error("realpath failed to resolve: ", error_message(last_error()))
+        # POSIX `realpath` reports through errno and the message the caller
+        # sees is the errno message, so this reports the same way rather than
+        # handing back a Win32 sentence saying the same thing in other words.
+        # `errno_from_win32` in `sys._libc_errno` is the translation.
+        set_errno(errno_from_win32(last_error()))
+        raise Error("realpath failed to resolve: ", get_errno())
 
     try:
         var resolved = final_path(handle)
@@ -872,4 +878,5 @@ def _realpath(var path: String) raises -> String:
         return resolved^
     except e:
         close_handle(handle)
+        set_errno(errno_from_win32(last_error()))
         raise Error("realpath failed to resolve: ", e)
