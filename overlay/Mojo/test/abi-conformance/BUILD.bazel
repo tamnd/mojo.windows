@@ -14,7 +14,11 @@ package(default_visibility = ["//visibility:private"])
 modular_cc_library(
     name = "probe",
     testonly = True,
-    srcs = ["probe.c"],
+    srcs = [
+        "probe.c",
+        "probe_structs.c",
+    ],
+    hdrs = ["probe.h"],
     alwayslink = True,
 )
 
@@ -49,4 +53,20 @@ modular_run_binary_test(
     name = "scalars_test",
     size = "small",
     binary = "scalars",
+)
+
+mojo_binary(
+    name = "structs",
+    testonly = True,
+    srcs = ["structs.mojo"],
+    deps = [
+        ":abi_probe",
+        "@mojo//:std",
+    ],
+)
+
+modular_run_binary_test(
+    name = "structs_test",
+    size = "small",
+    binary = "structs",
 )

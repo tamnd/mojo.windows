@@ -152,3 +152,43 @@ def check_returned_float(probe: StaticString, got: Float64, want: Float64) -> In
         return 0
     print("FAIL", probe, "returned", got, "expected", want)
     return 1
+
+
+def check_returned_int_field(
+    probe: StaticString, field: Int, got: Int64, want: Int64
+) -> Int:
+    """Checks one integer field of a returned struct.
+
+    Args:
+        probe: The name of the probe, used in the failure message.
+        field: The field position, counting from 0.
+        got: What came back in that field.
+        want: What should have.
+
+    Returns:
+        1 if the check failed, 0 if it passed.
+    """
+    if got == want:
+        return 0
+    print("FAIL", probe, "returned field", field, "as", got, "expected", want)
+    return 1
+
+
+def check_returned_float_field(
+    probe: StaticString, field: Int, got: Float64, want: Float64
+) -> Int:
+    """Checks one floating point field of a returned struct.
+
+    Args:
+        probe: The name of the probe, used in the failure message.
+        field: The field position, counting from 0.
+        got: What came back in that field.
+        want: What should have.
+
+    Returns:
+        1 if the check failed, 0 if it passed.
+    """
+    if got == want:
+        return 0
+    print("FAIL", probe, "returned field", field, "as", got, "expected", want)
+    return 1

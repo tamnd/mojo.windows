@@ -11,11 +11,14 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 //
-// The ground truth half of the ABI conformance suite. Every function here is
-// compiled by the platform C compiler, so what it does with its arguments is by
-// definition what the platform ABI says. The Mojo half calls these and compares
-// what arrived against what it sent. A mismatch is a lowering bug in the Mojo
-// compiler, pinned to one signature.
+// The recording buffer, and the scalar probes. Struct probes are in
+// probe_structs.c and write into the same buffer.
+//
+// This is the ground truth half of the ABI conformance suite. Every function
+// here is compiled by the platform C compiler, so what it does with its
+// arguments is by definition what the platform ABI says. The Mojo half calls
+// these and compares what arrived against what it sent. A mismatch is a
+// lowering bug in the Mojo compiler, pinned to one signature.
 //
 // The probes record their arguments into a buffer rather than echoing them back
 // through a return value. Echoing is the obvious design and it is worse in two
@@ -30,6 +33,8 @@
 // call at a time on one thread, and adding a lock would put a call of its own
 // between the probe and the thing being measured.
 
+#include "Mojo/test/abi-conformance/probe.h"
+
 #include <stdint.h>
 
 enum { ABI_PROBE_MAX_SLOTS = 32 };
@@ -38,10 +43,7 @@ static int64_t g_int_slots[ABI_PROBE_MAX_SLOTS];
 static double g_float_slots[ABI_PROBE_MAX_SLOTS];
 static int32_t g_count;
 
-// Slots are written in argument order, so slot n holds argument n whatever its
-// type. The reader knows the signature it called and so knows which of the two
-// arrays to look in.
-static void record_int(int64_t value) {
+void abi_probe_record_int(int64_t value) {
   if (g_count < ABI_PROBE_MAX_SLOTS) {
     g_int_slots[g_count] = value;
     g_float_slots[g_count] = 0.0;
@@ -49,7 +51,7 @@ static void record_int(int64_t value) {
   }
 }
 
-static void record_float(double value) {
+void abi_probe_record_float(double value) {
   if (g_count < ABI_PROBE_MAX_SLOTS) {
     g_int_slots[g_count] = 0;
     g_float_slots[g_count] = value;
@@ -97,8 +99,8 @@ double abi_probe_float(int32_t index) {
     r6(a6);                                                          \
   }
 
-#define I record_int
-#define F record_float
+#define I abi_probe_record_int
+#define F abi_probe_record_float
 
 // Integer scalars at each width. Narrow types are the ones worth passing
 // negative values through, because neither ABI says anything about the upper
@@ -191,28 +193,28 @@ PROBE6(abi_mixed_fifi_x6, double, int32_t, double, int32_t, double, int32_t, F,
 
 void abi_int64_x9(int64_t a1, int64_t a2, int64_t a3, int64_t a4, int64_t a5,
                   int64_t a6, int64_t a7, int64_t a8, int64_t a9) {
-  record_int(a1);
-  record_int(a2);
-  record_int(a3);
-  record_int(a4);
-  record_int(a5);
-  record_int(a6);
-  record_int(a7);
-  record_int(a8);
-  record_int(a9);
+  abi_probe_record_int(a1);
+  abi_probe_record_int(a2);
+  abi_probe_record_int(a3);
+  abi_probe_record_int(a4);
+  abi_probe_record_int(a5);
+  abi_probe_record_int(a6);
+  abi_probe_record_int(a7);
+  abi_probe_record_int(a8);
+  abi_probe_record_int(a9);
 }
 
 void abi_float64_x9(double a1, double a2, double a3, double a4, double a5,
                     double a6, double a7, double a8, double a9) {
-  record_float(a1);
-  record_float(a2);
-  record_float(a3);
-  record_float(a4);
-  record_float(a5);
-  record_float(a6);
-  record_float(a7);
-  record_float(a8);
-  record_float(a9);
+  abi_probe_record_float(a1);
+  abi_probe_record_float(a2);
+  abi_probe_record_float(a3);
+  abi_probe_record_float(a4);
+  abi_probe_record_float(a5);
+  abi_probe_record_float(a6);
+  abi_probe_record_float(a7);
+  abi_probe_record_float(a8);
+  abi_probe_record_float(a9);
 }
 
 // Mixed and spilled at once, which is where the two ABIs disagree the most. On
@@ -221,15 +223,15 @@ void abi_float64_x9(double a1, double a2, double a3, double a4, double a5,
 // nothing spills at all.
 void abi_mixed_x9(int32_t a1, double a2, int64_t a3, float a4, int32_t a5,
                   double a6, int64_t a7, float a8, int32_t a9) {
-  record_int(a1);
-  record_float(a2);
-  record_int(a3);
-  record_float(a4);
-  record_int(a5);
-  record_float(a6);
-  record_int(a7);
-  record_float(a8);
-  record_int(a9);
+  abi_probe_record_int(a1);
+  abi_probe_record_float(a2);
+  abi_probe_record_int(a3);
+  abi_probe_record_float(a4);
+  abi_probe_record_int(a5);
+  abi_probe_record_float(a6);
+  abi_probe_record_int(a7);
+  abi_probe_record_float(a8);
+  abi_probe_record_int(a9);
 }
 
 //===----------------------------------------------------------------------===//
