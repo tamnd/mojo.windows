@@ -202,13 +202,17 @@ stage_into() {
 # the rest and one that needs fewer does nothing at all.
 #
 # The staged tree is left behind on purpose. It is the cache, and deleting it at the end of
-# a run would mean paying for the copy again at the start of the next one.
+# a run would mean paying for the copy again at the start of the next one. Nothing prunes
+# it either, and a repository name carries its version, so a staging directory that has seen
+# a few upstream pins is worth deleting by hand once in a while.
 #
 # Not all of it, though. The external half of the manifest for the standard library suite is
-# 719 megabytes, and all but about five of that is LLVM sources that no Windows test opens.
-# What makes an external file reachable from a Windows process at all is a variable pointing
-# at it, since there is no runfiles library on that side to look anything up, so a repo is
-# staged when something in the environment about to be set points into it and not otherwise.
+# 719 megabytes, and most of that is sources for tools that run on this side and never go
+# anywhere near Windows. What makes an external file reachable from a Windows process at all
+# is a variable pointing at it, since there is no runfiles library on that side to look
+# anything up, so a repo is staged when something in the environment about to be set points
+# into it and not otherwise. That comes to 125 megabytes for tier 0 and tier 1, and 588 once
+# tier 2 has asked for five Windows CPython trees.
 #
 # Points into it means the ../repo/ spelling specifically, which is how Bazel writes a path
 # that is relative to the runfiles root, and is the only spelling that can come out right on
