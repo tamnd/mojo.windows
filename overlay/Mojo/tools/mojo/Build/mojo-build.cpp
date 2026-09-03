@@ -905,8 +905,13 @@ static int linkOutput(OutputType outputType, const State &state,
   // already starts its search in the directory the executable was loaded from.
   // This is the same subtraction the Bazel linker driver does, for the same
   // reason.
+  // The namer is the target's, not this host's, because whatever comes back
+  // gets linked into the binary being produced. It is the same function that
+  // names this build's own shared library output, so the two cannot drift.
   SmallVector<StringRef> sharedLibArgs;
-  config.appendSharedLibraryLinkArgs(sharedLibArgs);
+  config.appendSharedLibraryLinkArgs(sharedLibArgs, [&](StringRef stem) {
+    return getSharedLibraryFileName(triple, stem);
+  });
   for (size_t i = 0, e = sharedLibArgs.size(); i < e; ++i) {
     if (isWindows && sharedLibArgs[i] == "-Xlinker" && i + 1 < e &&
         sharedLibArgs[i + 1] == "-rpath") {

@@ -104,6 +104,39 @@
 
 # ARM64: error: linking for Windows is only supported for x86_64, not 'aarch64'
 
+# The AsyncRT Mojo bindings are linked into the binary being produced, so their
+# file name is a question about the target. The config only puts them on the
+# link line when the file is actually there, so plant all three spellings in a
+# fake package root and see which one gets picked up. A regression here reads as
+# a Linux host handing a `.so` to lld-link.
+#
+# `package_root` is what `getPath` falls back to when a key is not set, and the
+# Bazel test environment sets the paths that matter (compilerrt, lld, import
+# path, shared libs) explicitly, so pointing it at a temp directory only affects
+# the lookup under test.
+#
+# Every check below is anchored to that temp directory, because under Bazel the
+# configured `shared_libs` already names a `libAsyncRTMojoBindings.so` out of the
+# build graph and it lands on the link line whatever the target is. That one
+# comes from the test rig rather than from the compiler, so an unanchored check
+# would be reading somebody else's answer.
+# RUN: rm -rf %t.root && mkdir -p %t.root/lib
+# RUN: touch %t.root/lib/AsyncRTMojoBindings.dll %t.root/lib/libAsyncRTMojoBindings.so %t.root/lib/libAsyncRTMojoBindings.dylib
+# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo MODULAR_MOJO_MAX_PACKAGE_ROOT=%t.root %mojo-build --target-triple x86_64-pc-windows-msvc %s -o %t.exe 2>&1 | FileCheck %s --check-prefix=ARTMBWIN --implicit-check-not=.tmp.root/lib/libAsyncRTMojoBindings
+
+# ARTMBWIN: {{[^ ]*}}.tmp.root/lib/AsyncRTMojoBindings.dll
+
+# The same lookup for Linux, where the `lib` prefix and the `.so` are correct.
+# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo MODULAR_MOJO_MAX_PACKAGE_ROOT=%t.root %mojo-build --target-triple x86_64-unknown-linux-gnu %s -o %t.out 2>&1 | FileCheck %s --check-prefix=ARTMBLINUX --implicit-check-not=.tmp.root/lib/AsyncRTMojoBindings.dll
+
+# ARTMBLINUX: {{[^ ]*}}.tmp.root/lib/libAsyncRTMojoBindings.so
+
+# An explicit `shared_libs_artmb` still wins, because an install that names the
+# file has said where it is and no naming rule should second guess that.
+# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo MODULAR_MOJO_MAX_PACKAGE_ROOT=%t.root MODULAR_MOJO_MAX_SHARED_LIBS_ARTMB=%t.root/lib/libAsyncRTMojoBindings.dylib %mojo-build --target-triple x86_64-pc-windows-msvc %s -o %t.exe 2>&1 | FileCheck %s --check-prefix=ARTMBOVERRIDE --implicit-check-not=.tmp.root/lib/AsyncRTMojoBindings.dll
+
+# ARTMBOVERRIDE: {{[^ ]*}}.tmp.root/lib/libAsyncRTMojoBindings.dylib
+
 # The sanitizer flags below the Windows branch are clang driver flags and there
 # is no clang driver on that path, so ask for one and get told.
 # RUN: not %mojo-build --target-triple x86_64-pc-windows-msvc --sanitize=address %s -o %t4.exe 2>&1 | FileCheck %s --check-prefix=SANITIZE

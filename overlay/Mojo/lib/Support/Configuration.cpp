@@ -176,7 +176,9 @@ void MojoConfig::appendSystemLibraryLinkArgs(SmallVectorImpl<StringRef> &libs) {
   }
 }
 
-void MojoConfig::appendSharedLibraryLinkArgs(SmallVectorImpl<StringRef> &args) {
+void MojoConfig::appendSharedLibraryLinkArgs(
+    SmallVectorImpl<StringRef> &args,
+    llvm::function_ref<std::string(StringRef)> nameSharedLibrary) {
   StringRef sharedLibsArg = getValue(STRINGIFY_MOJO_CONFIG(".shared_libs"));
   if (!sharedLibsArg.empty()) {
     sharedLibsArg.split(args, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
@@ -199,13 +201,13 @@ void MojoConfig::appendSharedLibraryLinkArgs(SmallVectorImpl<StringRef> &args) {
   //
   // This one is not quite like the others above it. The file being named here
   // is linked into the binary `mojo build` is producing, so the right answer is
-  // the target's and not the host's. There is no triple in reach at this point,
-  // and threading one down here is a change to every caller, so it gets the host
-  // answer for now. That is still an improvement, because a Windows install now
-  // looks for `AsyncRTMojoBindings.dll` instead of a `.so` that was never there,
-  // but it is wrong for a cross build and #136 is where that gets fixed.
-  StringRef bindings = getPath(STRINGIFY_MOJO_CONFIG(".shared_libs_artmb"),
-                               sharedLibPath("AsyncRTMojoBindings"));
+  // the target's and not the host's, and that is why the name comes in from the
+  // caller. A Linux host cross compiling for Windows used to find
+  // `lib/libAsyncRTMojoBindings.so`, decide it existed, and hand a `.so` to
+  // lld-link, which is not a thing lld-link can read.
+  StringRef bindings =
+      getPath(STRINGIFY_MOJO_CONFIG(".shared_libs_artmb"),
+              "lib/" + nameSharedLibrary("AsyncRTMojoBindings"));
   if (llvm::sys::fs::exists(bindings))
     args.push_back(bindings);
 }
