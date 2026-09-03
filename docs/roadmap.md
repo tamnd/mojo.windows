@@ -46,6 +46,8 @@ Tier 1 is `os`, `pathlib`, `sys`, `time` and file I/O.
 
 Track progress as "tier N green" rather than as a pass percentage. A percentage is dominated by the trivial tier 0 mass and hides real progress.
 
+The tiers are written down in `test-tiers.txt` and run with `scripts/test-tier.sh`, so the claim is checkable rather than a description. That file is also where the exact membership lives, including the handful of individual files that sit in a tier their directory does not.
+
 ## M5, first public release, one to two weeks
 
 Console virtual terminal handling, the UTF-8 manifest, wide character paths, the crash handler, then packaging. A zip on GitHub Releases with checksums and build provenance. PDBs generated and published separately. Release notes that say plainly what does not work.

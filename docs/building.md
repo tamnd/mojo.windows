@@ -169,9 +169,27 @@ The machine comes from the environment and there is no default, which is the pol
 
 Neither transport is emulation. Both start the same PE on the same Windows kernel, and the only difference is how the bytes got there.
 
-What this is not is Bazel remote execution with a Windows executor, which is the architecturally correct answer and is worth doing once the shim's overhead is what is slowing you down. It is also not yet wired into `bazel test`, because the test targets go through a wrapper that is itself a Linux program. `bazel run` on the binary works today.
+`bazel test` works through it as well as `bazel run`, and on the wsl transport it needs three flags that are not obvious. `--strategy=TestRunner=local` is one, because the sandbox mounts `/mnt/c` read only and staging into it fails as `mkdir: Read-only file system`. `--test_env=WSL_INTEROP --test_env=WSL_DISTRO_NAME` are the other two, because interop is a vsock to a server on the Windows side and those two variables are how a process finds it, so without them starting the executable times out as `UtilAcceptVsock:273: accept4 failed 110` and reads like a broken binary rather than a missing variable.
+
+The shim carries a target's declared environment across, which is worth knowing because nothing about that is automatic. A fresh `cmd` starts with none of it, and WSL hands a Windows process only the variables named in `WSLENV`, so `export` on the Linux side is not enough and a test reading one gets an empty string. Under `bazel test` the whole of Bazel's environment travels minus a deny list of its own bookkeeping, which is safe because Bazel has already scrubbed the calling shell. Run by hand there is no scrubbing and the environment is your login shell, tokens included, so nothing is swept and `MOJO_WINDOWS_TEST_ENV` takes `NAME=VALUE` lines for what should cross. `MOJO_WINDOWS_TEST_VERBOSE` prints what was set.
+
+What this is not is Bazel remote execution with a Windows executor, which is the architecturally correct answer and is worth doing once the shim's overhead is what is slowing you down.
 
 Do not use Wine. It emulates the OS, so a failure is ambiguous between our bug and Wine's bug, which defeats the purpose when the thing you are validating is ABI conformance.
+
+## Test tiers
+
+A pass percentage over the standard library test suite is close to useless as a progress signal. The suite is dominated by tests that never touch the operating system, so the number mostly measures whether the ABI is right, it moves by a fraction of a percent when something real lands, and it says nothing about which part of the port is stuck. `test-tiers.txt` splits the suite into four tiers instead, and the signal is "tier 1 is green", which is a claim someone can check.
+
+Tier 0 is pure computation. Tier 1 is the operating system surface this port is about. Tier 2 is what needs a second system to cooperate, meaning shared library loading, CPython hosting and process spawning. Tier 3 is deferred, which covers GPU targets and the POSIX interfaces that have no Windows meaning rather than a missing Windows implementation. The header of `test-tiers.txt` says which directory is in which tier and why.
+
+```sh
+scripts/test-tier.sh 0                        # run tier 0 for the host
+scripts/test-tier.sh 1 --config=windows ...   # anything after the tier goes to Bazel
+scripts/test-tier.sh 1 --print                # just the patterns, one per line
+```
+
+Tier 0 is the diagnostic and it is the reason the tiers are worth the trouble. Nothing in it asks the kernel for anything, so it passes on Windows for free once the ABI and the calling convention are right. If tier 0 is not green, the problem is not a missing Windows implementation of anything, it is the ABI, and no amount of porting library code will help.
 
 ## Building on Windows, later
 
