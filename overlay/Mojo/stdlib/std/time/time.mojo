@@ -30,6 +30,7 @@ from std.sys import (
     llvm_intrinsic,
 )
 from std.sys._assembly import inlined_assembly
+from std.sys._win import close_handle
 
 # ===-----------------------------------------------------------------------===#
 # Utilities
@@ -574,7 +575,7 @@ def _win_sleep_nanoseconds(nanoseconds: Int):
     else:
         _win_sleep_milliseconds(nanoseconds)
 
-    _ = external_call["CloseHandle", Int32](timer.value())
+    close_handle(Int(timer.value()))
 
 
 def _win_sleep_milliseconds(nanoseconds: Int):

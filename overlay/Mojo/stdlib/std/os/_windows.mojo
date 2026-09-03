@@ -56,6 +56,7 @@ from std.ffi import external_call
 from std.stat.stat import S_IFLNK
 from std.sys import align_of, size_of
 from std.sys._win import (
+    close_handle,
     error_message,
     final_path,
     last_error,
@@ -707,7 +708,7 @@ def _stat_with_identity(var path: String) raises -> stat_result:
     var ok = external_call["GetFileInformationByHandle", Int32](
         handle, Pointer(to=info)
     )
-    _ = external_call["CloseHandle", Int32](handle)
+    close_handle(handle)
     if ok == 0:
         return result^
 
@@ -867,8 +868,8 @@ def _realpath(var path: String) raises -> String:
 
     try:
         var resolved = final_path(handle)
-        _ = external_call["CloseHandle", Int32](handle)
+        close_handle(handle)
         return resolved^
     except e:
-        _ = external_call["CloseHandle", Int32](handle)
+        close_handle(handle)
         raise Error("realpath failed to resolve: ", e)

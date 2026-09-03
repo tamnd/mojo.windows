@@ -215,6 +215,29 @@ def error_message(code: UInt32) -> String:
 
 
 # ===-----------------------------------------------------------------------===#
+# Handles
+# ===-----------------------------------------------------------------------===#
+
+
+def close_handle(handle: Int):
+    """CloseHandle, declared in one place so that every caller agrees on it.
+
+    `external_call` declares the function it names, and two declarations of one
+    name with different argument types are a conflict. The compiler only says
+    so once both have been pulled into the same module, so the report arrives
+    in whichever unrelated program happened to import both, naming a line in
+    `ffi` and a line in whichever of the two got there second.
+
+    A HANDLE is opaque, so there is no wrong answer about how to spell it and
+    every caller picked a different one: a pointer where the call that produced
+    it returned a pointer, an integer where it returned an integer. This takes
+    the integer, which is what CreateFileW gives back, and callers holding a
+    pointer convert. One declaration, no clash.
+    """
+    _ = external_call["CloseHandle", Int32](handle)
+
+
+# ===-----------------------------------------------------------------------===#
 # Paths
 # ===-----------------------------------------------------------------------===#
 

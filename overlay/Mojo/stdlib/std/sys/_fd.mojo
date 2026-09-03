@@ -63,7 +63,7 @@ asked for. `_wopen` takes the conversion out of the picture.
 from std.ffi import c_int, c_ssize_t, c_uint, external_call
 from std.memory.address_space import AddressSpace
 from std.sys import CompilationTarget
-from std.sys._win import final_path, to_utf16
+from std.sys._win import close_handle, final_path, to_utf16
 
 # ===-----------------------------------------------------------------------===#
 # CRT constants
@@ -172,7 +172,7 @@ def _open_directory(wide: List[UInt16], flags: Int) -> Int:
         external_call["_open_osfhandle", c_int](handle, c_int(_O_RDONLY))
     )
     if fd < 0:
-        _ = external_call["CloseHandle", Int32](handle)
+        close_handle(handle)
     return fd
 
 
