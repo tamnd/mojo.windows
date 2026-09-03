@@ -459,6 +459,21 @@ modular_cc_library(
     name = "Threading",
     srcs = glob(["lib/Threading/*.cpp"]),
     hdrs = glob(["include/Support/Threading/*.h"]),
+    # GetAdaptersInfo, used by localMACs in HWInfo.cpp, lives in iphlpapi and
+    # not in the C runtime. On Linux and macOS the equivalent is getifaddrs,
+    # which is in libc, so there was nothing to name and no linkopt here.
+    #
+    # /DEFAULTLIB has the same effect as the #pragma comment(lib) the Windows
+    # SDK headers use for their own imports, which is to record the library in
+    # the object file's directives so every binary that pulls this code in gets
+    # it. Naming it here instead keeps it greppable and keeps the source the
+    # same file it is on the other two platforms. -Wl, because linkopts go to
+    # the compiler driver and this build drives clang in GNU mode, where a bare
+    # leading slash is read as a path.
+    linkopts = select({
+        "@platforms//os:windows": ["-Wl,/DEFAULTLIB:iphlpapi.lib"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":Base",
         # For HWInfo.cpp, which reads the MAC addresses out of iphlpapi.
