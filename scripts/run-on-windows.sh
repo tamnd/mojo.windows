@@ -51,6 +51,57 @@ binary="$(cd "$(dirname "$binary")" && pwd)/$(basename "$binary")"
 source_dir="$(dirname "$binary")"
 exe="$(basename "$binary")"
 
+# A test that reads a file needs that file, and Bazel does not put it next to the binary.
+# It writes a runfiles manifest instead, mapping the path a test will ask for to wherever
+# the file actually is, and on Linux the test runner points the process at that. Nothing
+# points a Windows process at anything, so the paths have to be rebuilt on the far side or
+# every test that opens its own data fails on a missing file and looks like a porting bug.
+#
+# Only the entries under _main are copied. That is the binary, the DLLs beside it, and the
+# data, which is nine files for a stdlib test. The rest of the manifest is a whole CPython
+# for Windows, a couple of thousand files, and nothing that runs today reads any of it.
+manifest="$binary.runfiles_manifest"
+run_rel="$exe"
+if [ -f "$manifest" ]; then
+  run_rel="$(awk -v exe="$exe" '
+    $1 ~ /^_main\// {
+      n = split($1, parts, "/")
+      if (parts[n] == exe) { sub(/^_main\//, "", $1); print $1; exit }
+    }' "$manifest")"
+  [ -n "$run_rel" ] || die "$exe is not listed in $manifest"
+fi
+
+# Copies everything the binary needs into a directory, keeping the shape the test expects
+# to find rather than flattening it, because the paths in the test are relative.
+stage_into() {
+  local root="$1"
+  mkdir -p "$root"
+  if [ -f "$manifest" ]; then
+    local dest src rel
+    while read -r dest src; do
+      case "$dest" in
+        _main/*) ;;
+        *) continue ;;
+      esac
+      if [ -z "$src" ] || [ ! -e "$src" ]; then
+        continue
+      fi
+      rel="${dest#_main/}"
+      mkdir -p "$root/$(dirname "$rel")"
+      cp -L "$src" "$root/$rel"
+    done < "$manifest"
+  else
+    # No manifest, so the binary is not a Bazel test and the DLLs beside it are all it
+    # has. The abi conformance binaries are this shape.
+    local lib
+    cp -L "$binary" "$root/"
+    for lib in "$source_dir"/*.dll; do
+      [ -e "$lib" ] || continue
+      cp -L "$lib" "$root/"
+    done
+  fi
+}
+
 transport="${MOJO_WINDOWS_TEST_TRANSPORT:-}"
 if [ -z "$transport" ]; then
   if [ -n "${MOJO_WINDOWS_TEST_HOST:-}" ]; then
@@ -94,16 +145,16 @@ case "$transport" in
 
     staged="$(mktemp -d)"
     trap 'rm -rf "$staged"; cleanup' EXIT
-    cp -L "$binary" "$staged/"
-    for lib in "$source_dir"/*.dll; do
-      [ -e "$lib" ] || continue
-      cp -L "$lib" "$staged/"
-    done
-    scp -q "$staged"/* "$host:$remote_scp/"
+    stage_into "$staged"
+    scp -q -r "$staged"/* "$host:$remote_scp/"
+
+    # cmd wants backslashes in a path it is being asked to execute, and the staged path
+    # is several directories deep once there are runfiles in it.
+    run_win="${run_rel//\//\\}"
 
     set +e
     # shellcheck disable=SC2029
-    ssh "$host" "cd \"$remote\" && .\\$exe $*"
+    ssh "$host" "cd \"$remote\" && .\\$run_win $*"
     status=$?
     set -e
     exit "$status"
@@ -117,15 +168,11 @@ case "$transport" in
 
     mkdir -p "$remote"
     trap 'rm -rf "$remote"' EXIT
-    cp -L "$binary" "$remote/"
-    for lib in "$source_dir"/*.dll; do
-      [ -e "$lib" ] || continue
-      cp -L "$lib" "$remote/"
-    done
-    chmod +x "$remote/$exe"
+    stage_into "$remote"
+    chmod +x "$remote/$run_rel"
 
     set +e
-    (cd "$remote" && "./$exe" "$@")
+    (cd "$remote" && "./$run_rel" "$@")
     status=$?
     set -e
     exit "$status"
