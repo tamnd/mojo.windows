@@ -31,9 +31,15 @@ new	-	Mojo/lib/KGENToLLVM/CABIWin64.cpp
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.h
 edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
 edit	ed6c8f8515f5cf564f169629107c7ea6d5f78d74	Mojo/stdlib/std/ffi/__init__.mojo
+new	-	Mojo/stdlib/std/os/_windows.mojo
+edit	eb6d1b6c8bc68c6fcdb71c22a9579d69b6b81594	Mojo/stdlib/std/os/fstat.mojo
+edit	70bd16b198a8404bfe3dd793dc39aff60036c933	Mojo/stdlib/std/os/path/path.mojo
 new	-	Mojo/stdlib/std/sys/_dl.mojo
+edit	80f7faad24d071b64f9fcff8f5e35bbb889e1a0f	Mojo/stdlib/std/sys/_libc_errno.mojo
+new	-	Mojo/stdlib/std/sys/_win.mojo
 edit	132e3af2f21a2d42a3611c9a4d53ff45fcecaa28	Mojo/stdlib/std/sys/info.mojo
 edit	5439bdaef796e82aacd354d0e674d5f4d62bbbb8	Mojo/stdlib/std/time/time.mojo
+edit	95aadc3a106352a3bc1b38de7dc5a6756e545d96	Mojo/stdlib/test/os/test_stat.mojo
 edit	1e7a5e4e7b567b1f626efe9583ec968e78c3c901	Mojo/stdlib/test/sys/BUILD.bazel
 edit	e0df474d713fab3ddf649b784ebeb78a0e09a78b	Mojo/stdlib/test/sys/test_dlhandle.mojo
 new	-	Mojo/stdlib/test/sys/test_os_predicates.mojo

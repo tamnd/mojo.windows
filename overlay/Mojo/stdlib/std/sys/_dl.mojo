@@ -38,12 +38,11 @@ that is.
 from std.ffi import CStringSlice, c_char, c_int, external_call
 from std.sys import CompilationTarget
 from std.sys._libc import dlclose, dlerror, dlopen, dlsym
+from std.sys._win import clear_last_error, error_message, last_error, to_utf16
 
 # ===-----------------------------------------------------------------------===#
 # Win32 constants
 # ===-----------------------------------------------------------------------===#
-
-comptime _CP_UTF8 = UInt32(65001)
 
 # Look in the directories the process has registered rather than in the current
 # directory. This is the flag that makes `LoadLibraryExW` safe to hand an
@@ -51,15 +50,6 @@ comptime _CP_UTF8 = UInt32(65001)
 # ERROR_INVALID_PARAMETER when the path is relative, which is why the code below
 # only passes it when the path is absolute.
 comptime _LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = UInt32(0x1000)
-
-comptime _FORMAT_MESSAGE_FROM_SYSTEM = UInt32(0x1000)
-comptime _FORMAT_MESSAGE_IGNORE_INSERTS = UInt32(0x200)
-
-# Long enough for every message the system has. FormatMessageW can allocate for
-# you instead, with FORMAT_MESSAGE_ALLOCATE_BUFFER, but then the caller owes it
-# a LocalFree and this is a failure path, which is the worst place to add a way
-# to leak.
-comptime _MESSAGE_CHARS = 512
 
 comptime _BACKSLASH = Byte(ord("\\"))
 comptime _SLASH = Byte(ord("/"))
@@ -118,17 +108,17 @@ def dl_close(handle: OptionalPointer[mut=True, NoneType, _]) -> c_int:
 
 def dl_clear_error():
     comptime if CompilationTarget.is_windows():
-        external_call["SetLastError", NoneType](UInt32(0))
+        clear_last_error()
     else:
         _ = dlerror()
 
 
 def dl_error() -> Optional[String]:
     comptime if CompilationTarget.is_windows():
-        var code = external_call["GetLastError", UInt32]()
+        var code = last_error()
         if code == 0:
             return None
-        return _win_message(code)
+        return error_message(code)
     else:
         var message = dlerror()
         if not message:
@@ -161,7 +151,7 @@ def _win_open(
         unsafe_from_utf8=CStringSlice(unsafe_from_ptr=filename.value())
     )
     var bytes = text.as_bytes()
-    var wide = _to_utf16(bytes)
+    var wide = to_utf16(bytes)
     var flags = (
         _LOAD_LIBRARY_SEARCH_DEFAULT_DIRS if _is_absolute(bytes) else UInt32(0)
     )
@@ -197,122 +187,3 @@ def _is_absolute(path: Span[Byte, _]) -> Bool:
         # The ordinary drive letter form.
         return True
     return False
-
-
-def _to_utf16(text: Span[Byte, _]) -> List[UInt16]:
-    # UTF-8 in, UTF-16 with a nul on the end out, with forward slashes turned
-    # into backslashes on the way through. The slashes matter: the Win32 file
-    # APIs take either, but LoadLibraryEx with any of the LOAD_LIBRARY_SEARCH
-    # flags rejects a name containing a forward slash, and a Mojo program is
-    # very likely to have built its path with them.
-    # Sized rather than measured. The usual way to call this is twice, once
-    # with a null buffer to be told the length and once to do the work, but
-    # UTF-8 never produces more UTF-16 code units than it had bytes, so the
-    # length is already known: one byte becomes at most one unit, and the four
-    # byte sequences that become two units had four bytes to pay for them. One
-    # more for the nul, because the count based form does not add one and the
-    # loader wants a nul terminated name.
-    var wide = List[UInt16](length=len(text) + 1, fill=0)
-    if len(text) == 0:
-        return wide^
-
-    var count = external_call["MultiByteToWideChar", Int32](
-        _CP_UTF8,
-        UInt32(0),
-        text.unsafe_ptr(),
-        Int32(len(text)),
-        wide.unsafe_ptr(),
-        Int32(len(text)),
-    )
-    if count <= 0:
-        return List[UInt16](length=1, fill=0)
-
-    comptime forward = UInt16(ord("/"))
-    comptime backward = UInt16(ord("\\"))
-    for index in range(Int(count)):
-        if wide[index] == forward:
-            wide[index] = backward
-    return wide^
-
-
-def _win_message(code: UInt32) -> String:
-    var buffer = List[UInt16](length=_MESSAGE_CHARS, fill=0)
-    var count = Int(
-        external_call["FormatMessageW", UInt32](
-            _FORMAT_MESSAGE_FROM_SYSTEM | _FORMAT_MESSAGE_IGNORE_INSERTS,
-            # No source module, because the message is coming from the system.
-            OptionalPointer[NoneType, ImmUntrackedOrigin](),
-            code,
-            # Language zero, which asks for the caller's language and falls back
-            # through the system's to US English.
-            UInt32(0),
-            buffer.unsafe_ptr(),
-            UInt32(_MESSAGE_CHARS),
-            # The insert arguments, which IGNORE_INSERTS says will not be read.
-            OptionalPointer[NoneType, MutUntrackedOrigin](),
-        )
-    )
-
-    # System messages come with a trailing newline, which is right for printing
-    # one on its own and wrong for putting one inside a sentence, and this is
-    # always going inside a sentence.
-    comptime carriage_return = UInt16(ord("\r"))
-    comptime newline = UInt16(ord("\n"))
-    comptime space = UInt16(ord(" "))
-    while count > 0 and (
-        buffer[count - 1] == carriage_return
-        or buffer[count - 1] == newline
-        or buffer[count - 1] == space
-    ):
-        count -= 1
-
-    if count == 0:
-        # No message for this code, which happens for codes the system does not
-        # own. The number on its own is still worth more than an empty string.
-        return String("Windows error ", code)
-
-    var message = _to_utf8(
-        Span(unsafe_ptr=buffer.unsafe_ptr(), length=count)
-    )
-    _ = buffer^
-    return message^
-
-
-def _to_utf8(wide: Span[UInt16, _]) -> String:
-    # Wide to UTF-8 rather than calling the ANSI FormatMessageA in the first
-    # place. FormatMessageA would give bytes in the system code page, and on a
-    # localized install those are not UTF-8, so they cannot go into a Mojo
-    # `String` without being converted anyway. Doing it here means the
-    # conversion is the one Windows supplies rather than one written here.
-    # Sized the same way as the other direction. Three bytes per code unit is
-    # the worst case, because the only sequences that reach four bytes come
-    # from a surrogate pair and a pair is two code units.
-    var bytes = List[Byte](length=3 * len(wide) + 1, fill=0)
-    if len(wide) == 0:
-        return String()
-
-    var count = external_call["WideCharToMultiByte", Int32](
-        _CP_UTF8,
-        UInt32(0),
-        wide.unsafe_ptr(),
-        Int32(len(wide)),
-        bytes.unsafe_ptr(),
-        Int32(3 * len(wide)),
-        # The replacement character and the flag saying one was used, neither
-        # of which CP_UTF8 accepts. It has its own answer for anything it
-        # cannot encode and rejects the call outright if you try to supply one.
-        OptionalPointer[c_char, ImmUntrackedOrigin](),
-        OptionalPointer[Int32, MutUntrackedOrigin](),
-    )
-    if count <= 0:
-        return String()
-
-    # Lossy rather than strict. CP_UTF8 with no flags already replaces anything
-    # unpaired with U+FFFD, so there should be nothing left to be lossy about,
-    # and raising out of the function that builds an error message would be a
-    # poor trade for a case that cannot happen.
-    var result = String(
-        from_utf8_lossy=Span(unsafe_ptr=bytes.unsafe_ptr(), length=Int(count))
-    )
-    _ = bytes^
-    return result^
