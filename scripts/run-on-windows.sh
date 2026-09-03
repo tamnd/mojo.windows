@@ -108,9 +108,12 @@ fi
 # points a Windows process at anything, so the paths have to be rebuilt on the far side or
 # every test that opens its own data fails on a missing file and looks like a porting bug.
 #
-# Only the entries under _main are copied. That is the binary, the DLLs beside it, and the
-# data, which is nine files for a stdlib test. The rest of the manifest is a whole CPython
-# for Windows, a couple of thousand files, and nothing that runs today reads any of it.
+# The entries under _main are the binary, the DLLs beside it, and the data, which is nine
+# files for a stdlib test. They go into a directory belonging to this run and are deleted
+# with it. The rest of the manifest belongs to external repositories, and for a test that
+# touches Python that is a whole CPython for Windows, 2765 entries and about five megabytes.
+# Those are staged as well, once per machine rather than once per test, and stage_external
+# below is where that happens and why it happens the way it does.
 #
 # Where that manifest is depends on who is running this, and there are three answers. Bazel
 # sets RUNFILES_MANIFEST_FILE when the tree is manifest only. Otherwise it builds a real
@@ -177,6 +180,172 @@ stage_into() {
       cp -L "$lib" "$root/"
     done
   fi
+}
+
+# Everything in the manifest that is not under _main belongs to an external repository, and
+# Bazel points at those with paths that are relative to the runfiles root. A test that uses
+# Python gets MOJO_PYTHON_LIBRARY set to something of this shape:
+#
+#   ../rules_python++python+python_3_13_x86_64-pc-windows-msvc/python313.dll
+#
+# The run at the bottom of this script happens with the current directory set to the staged
+# tree, which is standing in for the runfiles _main directory, so the parent of that tree is
+# where an external repository has to land for a path like that to resolve by itself. That
+# is the whole trick, and the reason it is worth preferring to rewriting the variable: the
+# paths Bazel wrote are already correct, they were just pointing at nothing.
+#
+# Staged once per machine rather than once per test, because 2765 files is not something to
+# copy 235 times. Once per machine means two tests can want it at the same moment, and the
+# lock directory settles that: mkdir is the one filesystem operation that succeeds for
+# exactly one caller and tells that caller it won. The stamp beside the lock records how
+# many entries were copied, so a later test that needs more of the same repository stages
+# the rest and one that needs fewer does nothing at all.
+#
+# The staged tree is left behind on purpose. It is the cache, and deleting it at the end of
+# a run would mean paying for the copy again at the start of the next one.
+#
+# Not all of it, though. The external half of the manifest for the standard library suite is
+# 719 megabytes, and all but about five of that is LLVM sources that no Windows test opens.
+# What makes an external file reachable from a Windows process at all is a variable pointing
+# at it, since there is no runfiles library on that side to look anything up, so a repo is
+# staged when something in the environment about to be set points into it and not otherwise.
+#
+# Points into it means the ../repo/ spelling specifically, which is how Bazel writes a path
+# that is relative to the runfiles root, and is the only spelling that can come out right on
+# the far side. A variable holding an absolute Linux path to the same repository is for a
+# tool running on this side and staging what it names would be so many megabytes for
+# nothing.
+#
+# A test that reaches an external file some other way would report it as missing, and the
+# answer then is to widen this rather than to go back to copying everything.
+
+external_repos() {
+  [ -n "$manifest" ] || return 0
+  local repo value
+  while read -r repo; do
+    for value in ${env_values[@]+"${env_values[@]}"}; do
+      case "$value" in
+        "../$repo/"* | *"/../$repo/"*)
+          printf '%s\n' "$repo"
+          break
+          ;;
+      esac
+    done
+  done < <(awk '{
+    if ($1 ~ /^_main\//) next
+    slash = index($1, "/")
+    if (slash > 1) print substr($1, 1, slash - 1)
+  }' "$manifest" | sort -u)
+}
+
+external_count() {
+  awk -v prefix="$1/" 'index($1, prefix) == 1' "$manifest" | wc -l | tr -d ' '
+}
+
+# An entry with no source is a file Bazel wants created empty rather than copied, which is
+# most of the __init__.py in a Python tree. Skipping those would read later as a module that
+# does not exist rather than as a file that does not exist.
+copy_external() {
+  local repo="$1" root="$2" dest src
+  while read -r dest src; do
+    case "$dest" in
+      "$repo"/*) ;;
+      *) continue ;;
+    esac
+    mkdir -p "$root/$(dirname "$dest")"
+    if [ -z "$src" ]; then
+      : >"$root/$dest"
+    elif [ -e "$src" ]; then
+      cp -RL "$src" "$root/$dest"
+    fi
+  done <"$manifest"
+}
+
+# Only ever one at a time, since the repositories are staged one after another, so a single
+# name is enough to remember what has to be given back if this exits early.
+lock_held=""
+lock_host=""
+
+release_lock() {
+  [ -n "$lock_held" ] || return 0
+  if [ -n "$lock_host" ]; then
+    # shellcheck disable=SC2029
+    ssh "$lock_host" "rmdir \"$lock_held\"" >/dev/null 2>&1 || true
+  else
+    rmdir "$lock_held" 2>/dev/null || true
+  fi
+  lock_held=""
+}
+
+# Ten minutes, which is longer than the copy has ever taken and short enough that a lock
+# left behind by a killed run says so rather than hanging the suite for good.
+lock_timeout=600
+
+stage_external() {
+  local parent="$1" repo want have lock stamp waited
+  for repo in $(external_repos); do
+    stamp="$parent/.mojo-external-$repo"
+    lock="$parent/.mojo-lock-$repo"
+    want="$(external_count "$repo")"
+    waited=0
+    while true; do
+      have="$(cat "$stamp" 2>/dev/null || echo 0)"
+      if [ "$have" -ge "$want" ]; then
+        break
+      fi
+      if mkdir "$lock" 2>/dev/null; then
+        lock_held="$lock"
+        info "staging $want files of $repo, once for every test on this machine"
+        copy_external "$repo" "$parent"
+        printf '%s\n' "$want" >"$stamp"
+        release_lock
+        break
+      fi
+      waited=$((waited + 1))
+      [ "$waited" -lt "$lock_timeout" ] ||
+        die "waited ten minutes for $lock, remove it if nothing is holding it"
+      sleep 1
+    done
+  done
+}
+
+# Same shape over ssh, with the stamp and the lock on the Windows side because two build
+# hosts can be pointed at one test machine. The copy is made here first and sent as a whole
+# directory, since scp of 2765 separate files would be 2765 round trips.
+stage_external_remote() {
+  local host="$1" parent="$2" repo want have lock stamp waited tmp
+  for repo in $(external_repos); do
+    stamp="$parent\\.mojo-external-$repo"
+    lock="$parent\\.mojo-lock-$repo"
+    want="$(external_count "$repo")"
+    waited=0
+    while true; do
+      # shellcheck disable=SC2029
+      have="$(ssh "$host" "type \"$stamp\"" 2>/dev/null | tr -dc '0-9')"
+      if [ -n "$have" ] && [ "$have" -ge "$want" ]; then
+        break
+      fi
+      # shellcheck disable=SC2029
+      if ssh "$host" "mkdir \"$lock\"" >/dev/null 2>&1; then
+        lock_host="$host"
+        lock_held="$lock"
+        info "staging $want files of $repo, once for every test on $host"
+        tmp="$(mktemp -d)"
+        copy_external "$repo" "$tmp"
+        scp -q -r "$tmp/$repo" "$host:${parent//\\//}/"
+        rm -rf "$tmp"
+        # No space before the redirection, which cmd would otherwise write into the file.
+        # shellcheck disable=SC2029
+        ssh "$host" "echo $want>\"$stamp\"" >/dev/null
+        release_lock
+        break
+      fi
+      waited=$((waited + 1))
+      [ "$waited" -lt "$lock_timeout" ] ||
+        die "waited ten minutes for $lock on $host, remove it if nothing is holding it"
+      sleep 1
+    done
+  done
 }
 
 # A Bazel test target can declare environment variables, and the test that reads one is
@@ -317,9 +486,10 @@ case "$transport" in
     trap cleanup EXIT
 
     staged="$(mktemp -d)"
-    trap 'rm -rf "$staged"; cleanup' EXIT
+    trap 'rm -rf "$staged"; release_lock; cleanup' EXIT
     stage_into "$staged"
     scp -q -r "$staged"/* "$host:$remote_scp/"
+    stage_external_remote "$host" "$root"
 
     # cmd wants backslashes in a path it is being asked to execute, and the staged path
     # is several directories deep once there are runfiles in it.
@@ -350,8 +520,9 @@ case "$transport" in
     remote="$stage/$run_id"
 
     mkdir -p "$remote"
-    trap 'rm -rf "$remote"' EXIT
+    trap 'rm -rf "$remote"; release_lock' EXIT
     stage_into "$remote"
+    stage_external "$stage"
     chmod +x "$remote/$run_rel"
 
     need wslpath
