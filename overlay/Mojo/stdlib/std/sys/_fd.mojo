@@ -25,7 +25,7 @@ This module is where the names change. It sits above `_libc` for the same
 reason `_dl` does: `_libc` is unconditional POSIX and is readable because of
 it, so the conditional layer belongs on top.
 
-Three things are not just a rename.
+Four things are not just a rename.
 
 The first is text mode, and it is the reason to read this file before touching
 anything that opens a file. Windows opens in text mode unless told otherwise,
@@ -54,6 +54,17 @@ The third is `fchdir`, which does not exist on Windows. It is built here out of
 two calls that do, and getting a descriptor to pass it needs a detour of its
 own. See `fd_open` and `fd_chdir`.
 
+The fourth is what a bad descriptor does. On Linux every call below returns -1
+and sets EBADF, and asking about a descriptor that is not open is an ordinary
+thing to do. On Windows the CRT checks the descriptor and calls its invalid
+parameter handler instead of returning, and the handler in the release runtime
+ends the process with STATUS_STACK_BUFFER_OVERRUN, 0xC0000409, printing
+nothing. `fd_isatty` turns that off for the length of its call, because
+`isatty` on a closed descriptor is a question with a real answer. The other
+calls here have the same hazard and have not been given the same treatment yet,
+because every caller of them today holds a descriptor it opened itself. See
+`suppress_invalid_parameter` in `sys._win`.
+
 Paths go in as UTF-16. A Mojo `String` is UTF-8 and the narrow `_open` takes
 the process code page, which on most installs is not UTF-8, so a path with a
 non-ASCII character in it would be opened under a different name than the one
@@ -63,7 +74,13 @@ asked for. `_wopen` takes the conversion out of the picture.
 from std.ffi import c_int, c_ssize_t, c_uint, external_call
 from std.memory.address_space import AddressSpace
 from std.sys import CompilationTarget
-from std.sys._win import close_handle, final_path, to_utf16
+from std.sys._win import (
+    close_handle,
+    final_path,
+    restore_invalid_parameter,
+    suppress_invalid_parameter,
+    to_utf16,
+)
 
 # ===-----------------------------------------------------------------------===#
 # CRT constants
@@ -301,7 +318,13 @@ def fd_isatty(fd: Int) -> Bool:
         # character device and that includes NUL as well as the console. The
         # question callers are really asking is whether output is worth
         # colouring, and NUL is a rare enough answer to be wrong about.
-        return external_call["_isatty", c_int](c_int(fd)) != 0
+        #
+        # A descriptor that is not open is not a false answer here, it is the
+        # end of the process. See the fourth note at the top of the file.
+        var previous = suppress_invalid_parameter()
+        var answer = external_call["_isatty", c_int](c_int(fd)) != 0
+        restore_invalid_parameter(previous)
+        return answer
     else:
         return external_call["isatty", c_int](c_int(fd)) != 0
 

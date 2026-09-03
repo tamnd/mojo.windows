@@ -24,6 +24,12 @@ is this descriptor pointing", so `os.path.realpath` and the descriptor based
 directory change in `sys._fd` both need it, and neither of those modules can
 import the other. See `final_path`.
 
+The fourth thing is not about Win32 at all but about the C runtime, which ends
+the process rather than returning a failure when it does not like an argument.
+Any module binding a CRT call that a caller could reasonably hand something
+invalid has to deal with that, so the switch for it lives here too. See
+`suppress_invalid_parameter`.
+
 Nothing in this file is conditional. It only compiles on Windows and callers
 are expected to have already decided that, the same way `_libc` only makes
 sense on POSIX. The modules above are where the two systems get reconciled.
@@ -212,6 +218,59 @@ def error_message(code: UInt32) -> String:
     var message = to_utf8(Span(unsafe_ptr=buffer.unsafe_ptr(), length=count))
     _ = buffer^
     return message^
+
+
+# ===-----------------------------------------------------------------------===#
+# The invalid parameter handler
+# ===-----------------------------------------------------------------------===#
+
+# What the C runtime hands its handler: the expression that failed, the function
+# it failed in, the file, the line, and a reserved word. The first three are
+# wide strings and are all null in the release runtime, which is the only one
+# anything here links against, so they are taken as integers and ignored.
+comptime _invalid_parameter_handler = def (
+    Int, Int, Int, UInt32, Int
+) thin -> None
+
+
+def _ignore_invalid_parameter(
+    expression: Int, function: Int, file: Int, line: UInt32, reserved: Int
+):
+    """A handler that returns, which is the entire point of it."""
+    pass
+
+
+def suppress_invalid_parameter() -> _invalid_parameter_handler:
+    """Stops the C runtime ending the process over an argument it dislikes.
+
+    Most of the CRT checks its arguments, and when a check fails it calls a
+    handler instead of returning a failure the way POSIX would. The handler in
+    the release runtime is `__fastfail`, which raises
+    STATUS_STACK_BUFFER_OVERRUN, 0xC0000409. That is not a signal, not
+    something a caller can catch and not an exit code anybody chose: the
+    process is gone before the call returns and nothing is printed. Passing a
+    descriptor that is not open to `_isatty` is enough to trigger it.
+
+    So a call that can be handed something invalid installs a handler that does
+    nothing first, and the CRT call then returns its documented failure value
+    with errno set, which is what the same call does on Linux. The handler is
+    thread local, so this does not reach another thread, and the one it
+    displaced is returned so that it does not reach another call either. Give
+    that back to `restore_invalid_parameter` once the call is done. CPython
+    does the same thing and spells it `_Py_BEGIN_SUPPRESS_IPH`.
+    """
+    return external_call[
+        "_set_thread_local_invalid_parameter_handler",
+        _invalid_parameter_handler,
+    ](_ignore_invalid_parameter)
+
+
+def restore_invalid_parameter(previous: _invalid_parameter_handler):
+    """Puts back whatever `suppress_invalid_parameter` displaced."""
+    _ = external_call[
+        "_set_thread_local_invalid_parameter_handler",
+        _invalid_parameter_handler,
+    ](previous)
 
 
 # ===-----------------------------------------------------------------------===#
