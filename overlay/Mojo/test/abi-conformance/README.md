@@ -71,6 +71,17 @@ Vectors, in `vectors.mojo`. The sharpest disagreement left. System V gives a six
 - Two vectors, a vector with scalars after it, scalars with a vector after them, and five vectors so the last of them are on the stack under both conventions and by different arithmetic.
 - Returns, including a return from a call that has already spent its register slots, which is where the hidden pointer and the arguments compete for the same places.
 
+The stack a call is made on, in `frames.mojo`. The other five files ask where an argument went. This one asks about the frame underneath it, which the caller has to get right before it places anything, and which Windows has two more rules about than Linux does.
+
+- Shadow space. A Win64 caller reserves thirty two bytes above the return address whatever the call looks like, and they belong to the callee, to spill its four register arguments into. The probe that catches a missing reservation is the one with arguments on the stack: a correct caller puts them immediately above the thirty two bytes, and a caller that reserved nothing puts them exactly where the callee spills, so the callee destroys its own fifth and sixth arguments before it reads them. The four argument version is here for completeness and catches nothing on its own, because a callee that spills into the caller's frame reads back what it just wrote and the damage is somewhere the probe cannot look.
+- Stack alignment. Both conventions want the stack pointer to be a multiple of sixteen at the call. Windows is harder because the shadow space and the stack argument area are sized together, so a caller that adds the two and forgets to round is off by eight, and only on the calls where the argument count makes the total odd. Checked with no stack arguments, one, two and five, so being right by accident in one of them is not enough. The C side asks for a local aligned to sixteen and reports how far off it landed, since nothing realigns the stack on the way in and the answer is therefore about the caller.
+
 ## What is not covered yet
 
-Shadow space, stack alignment with no red zone, and the callee saved register set including the extra XMM registers Win64 preserves. The register set is the one that needs C to call into Mojo rather than the other way round, which needs COFF exports and is issue #134. Issue #13 tracks the rest.
+The red zone, and the callee saved register set including the extra XMM registers Win64 preserves.
+
+The red zone is not testable here. System V lets a leaf function use the hundred and twenty eight bytes below the stack pointer without reserving them and Windows does not, but a Windows caller that used one anyway is correct right up until an interrupt or an exception lands on it, and a test cannot arrange that.
+
+The register set needs C to call into Mojo rather than the other way round, which needs COFF exports and is issue #134.
+
+Neither of those will be done under issue #13.

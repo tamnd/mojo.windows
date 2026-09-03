@@ -37,8 +37,10 @@ new	-	Mojo/stdlib/test/sys/test_os_predicates.mojo
 new	-	Mojo/test/abi-conformance/BUILD.bazel
 new	-	Mojo/test/abi-conformance/README.md
 new	-	Mojo/test/abi-conformance/abi_probe/__init__.mojo
+new	-	Mojo/test/abi-conformance/frames.mojo
 new	-	Mojo/test/abi-conformance/probe.c
 new	-	Mojo/test/abi-conformance/probe.h
+new	-	Mojo/test/abi-conformance/probe_frames.c
 new	-	Mojo/test/abi-conformance/probe_structs.c
 new	-	Mojo/test/abi-conformance/probe_varargs.c
 new	-	Mojo/test/abi-conformance/probe_vectors.c

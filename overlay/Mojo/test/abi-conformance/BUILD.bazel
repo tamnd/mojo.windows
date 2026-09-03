@@ -16,6 +16,7 @@ modular_cc_library(
     testonly = True,
     srcs = [
         "probe.c",
+        "probe_frames.c",
         "probe_structs.c",
         "probe_varargs.c",
         "probe_vectors.c",
@@ -120,4 +121,20 @@ modular_run_binary_test(
     name = "vectors_test",
     size = "small",
     binary = "vectors",
+)
+
+mojo_binary(
+    name = "frames",
+    testonly = True,
+    srcs = ["frames.mojo"],
+    deps = [
+        ":abi_probe",
+        "@mojo//:std",
+    ],
+)
+
+modular_run_binary_test(
+    name = "frames_test",
+    size = "small",
+    binary = "frames",
 )
