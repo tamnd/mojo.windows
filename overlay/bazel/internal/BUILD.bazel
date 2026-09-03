@@ -197,7 +197,14 @@ mojo_copts_toolchain(
 
 mojo_toolchain(
     name = "mojo_toolchain_target",
-    implicit_deps = [],
+    # Every Mojo target links these, which is where they have to be. The symbol is reached
+    # from generated code rather than from anything a BUILD file names, so a per target
+    # dependency would mean adding one to every target that happens to format a 128 bit
+    # integer, and finding out which those are by watching links fail.
+    implicit_deps = select({
+        "//:windows_x86_64": [":windows_compiler_rt_builtins"],
+        "//conditions:default": [],
+    }),
     lld = "@llvm-project//lld:lld",
     mojo = "//Mojo/tools/mojo",
     tags = [
@@ -240,6 +247,101 @@ py_binary(
 )
 
 cc_library(name = "empty_lib")
+
+# x86-64 has no instruction for a 128 bit divide or remainder, so the compiler emits a call
+# to one of these, and printing a 128 bit integer divides by the radix. On Linux they come
+# from the compiler-rt builtins archive that clang links out of its resource directory
+# without being asked. The clang this build uses is a Linux tarball and the only archive in
+# it is libclang_rt.builtins.a for x86_64-unknown-linux-gnu, which is ELF, so a Windows link
+# finds nothing and fails on __divti3 and __modti3 with no hint that a support library is
+# what is missing.
+#
+# The half precision conversions are here for the same reason. x86-64 without the f16c
+# feature has no instruction for float to half either, so a SIMD test that touches Float16
+# fails on __truncdfhf2 the moment the division ones stop failing first.
+#
+# Compiling the handful of sources that matter out of the compiler-rt that is already in the
+# tree, rather than fetching a whole LLVM Windows release for one .lib. It is the same code
+# either way, and this way there is no second thing to keep in step with the pin.
+#
+# Named for the layer rather than for the functions in it, because anything else in the
+# builtins that turns up missing on Windows belongs here too. A missing one is a link error
+# naming the symbol, so the way to find the next is to read the error and add the file.
+#
+# Not the whole portable set, because at this pin two dozen of those sources are C++ that
+# includes LLVM-libc's shared math headers, and compiler-rt's own Bazel files leave them in
+# the portable filegroup while listing only some of them as needing libc. They do not build
+# for any target here, ours included.
+#
+# Copied out of a filegroup rather than named one file at a time, because a source file in
+# another package is only visible through exports_files and compiler-rt does not export
+# these. The filegroup is a rule and public, so the whole set comes across and this picks
+# the wanted names out of it. Nothing to keep in step: the names are here and the contents
+# come from wherever the pin points.
+genrule(
+    name = "windows_compiler_rt_builtins_srcs",
+    srcs = ["@llvm-project//compiler-rt:builtins_generic_srcs"],
+    outs = [
+        "compiler-rt-builtins/divti3.c",
+        "compiler-rt-builtins/extendhfdf2.c",
+        "compiler-rt-builtins/extendhfsf2.c",
+        "compiler-rt-builtins/fp_extend.h",
+        "compiler-rt-builtins/fp_extend_impl.inc",
+        "compiler-rt-builtins/fp_lib.h",
+        "compiler-rt-builtins/fp_trunc.h",
+        "compiler-rt-builtins/fp_trunc_impl.inc",
+        "compiler-rt-builtins/int_div_impl.inc",
+        "compiler-rt-builtins/int_endianness.h",
+        "compiler-rt-builtins/int_lib.h",
+        "compiler-rt-builtins/int_math.h",
+        "compiler-rt-builtins/int_types.h",
+        "compiler-rt-builtins/int_util.h",
+        "compiler-rt-builtins/modti3.c",
+        "compiler-rt-builtins/truncdfhf2.c",
+        "compiler-rt-builtins/truncsfhf2.c",
+        "compiler-rt-builtins/udivmodti4.c",
+        "compiler-rt-builtins/udivti3.c",
+        "compiler-rt-builtins/umodti3.c",
+    ],
+    cmd = """
+for out in $(OUTS); do
+  base="$${out##*/}"
+  for src in $(SRCS); do
+    if [ "$${src##*/}" = "$$base" ]; then
+      cp "$$src" "$$out"
+      break
+    fi
+  done
+  if [ ! -f "$$out" ]; then
+    echo "error: the compiler-rt builtins sources have no $$base" >&2
+    exit 1
+  fi
+done
+""",
+)
+
+cc_library(
+    name = "windows_compiler_rt_builtins",
+    srcs = [":windows_compiler_rt_builtins_srcs"],
+    # -fno-builtin is what compiler-rt builds its own builtins with, since a builtin the
+    # compiler is allowed to recognise can be turned back into a call to itself. -w because
+    # this is somebody else's code and the .bazelrc line that silences warnings in external
+    # sources matches on the path, which a copy in bazel-out no longer has.
+    #
+    # COMPILER_RT_HAS_FLOAT16 is normally set by compiler-rt's CMake after probing the
+    # compiler, and getting it wrong is not a compile error, it is a calling convention
+    # mismatch. Without it a half is a uint16_t and comes back in eax, while the caller the
+    # compiler generated is reading xmm0, so __truncsfhf2 and __extendhfsf2 return garbage
+    # and a Float16 test fails somewhere far away with a nan it cannot explain. clang has
+    # supported _Float16 on x86-64 for years, so the probe has one answer here.
+    copts = [
+        "-DCOMPILER_RT_HAS_FLOAT16",
+        "-fno-builtin",
+        "-w",
+    ],
+    linkstatic = True,
+    target_compatible_with = ["@platforms//os:windows"],
+)
 
 # TCMalloc compiled with NUMA partition support (kNumaPartitions=2).
 alias(
