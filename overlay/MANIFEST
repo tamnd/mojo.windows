@@ -9,6 +9,7 @@
 #
 # pin modular/v25.7.0-29742-g9aba62be84
 
+edit	ee45aec40b8361545723a12f9b00a0439883d629	.bazelrc
 edit	f34e1d3277d9da00bfc05129aadc9d077d2c8437	AsyncRT/include/AsyncRT/Runtime/Globals/Globals.h
 edit	503e13d1963e0cea956b5a564c244d947af49744	AsyncRT/lib/Runtime/Globals/Globals.cpp
 edit	02b22370dd0a493fe9d83ae28dd9708a654f297f	AsyncRT/lib/Support/Semaphore.cpp
@@ -18,6 +19,8 @@ edit	ad5d85aa897cbf31a7767237adb8dba2aa3570c3	Config/include/Config/Version.h
 edit	6acb9727246db7b58efcfdfe27ac2338d5c7d015	Config/include/GeneratedVersion.h.tmpl
 edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
 edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
+new	-	Mojo/examples/windows-hello/BUILD.bazel
+new	-	Mojo/examples/windows-hello/hello.mojo
 edit	c05a79e83f9d92be0834751dcc5f22a24682a19f	Mojo/include/Mojo/Support/Configuration.h
 edit	59f6f330c21fe83dc6241eb535e4692521d45656	Mojo/lib/Compiler/ObjectCompiler/ObjectCompiler.cpp
 edit	d916230e014c471d175bdaff41f1d9eed6184b55	Mojo/lib/CompilerRT/Memory.h

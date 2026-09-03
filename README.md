@@ -6,7 +6,7 @@ Native Windows support for the Mojo compiler and standard library, maintained as
 
 ## Status
 
-Early. Nothing builds for Windows yet. What exists today is the design work, the upstream pinning machinery, and the issue backlog. The first milestone that produces a runnable artifact is M3.
+Early, but past the interesting part. A Mojo program cross compiled from Linux now produces a `hello.exe` that runs on Windows 11 and prints. `//Mojo/examples/windows-hello:hello` is that program and [docs/building.md](docs/building.md) has the command. What is not done is most of the standard library, anything resembling packaging, and building on Windows rather than for it.
 
 Track progress on the [milestones](https://github.com/tamnd/mojo.windows/milestones).
 

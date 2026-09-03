@@ -134,6 +134,24 @@ Everything else is named by the target that needs it, in its own `linkopts`, whi
 
 Two things to get right when you add one. The spelling is `-Wl,/DEFAULTLIB:foo.lib`. Without the `-Wl,` prefix, clang's GNU driver reads `-DEFAULTLIB:foo.lib` as `-D EFAULTLIB:foo.lib`, defines a macro nobody wanted, links without a word of complaint, and the library never reaches the linker. And the library has to exist in the sysroot under `sdk/lib/um/x86_64`, which for the SDK we pin means all ten of the above and most of the usual suspects besides.
 
+## Running a Mojo program on Windows
+
+There is one in the tree for exactly this purpose. From a Linux x86_64 host with the sysroot in place:
+
+```
+./bazelw build --config=build-mojo --config=windows \
+  --repo_env=MOJO_WINDOWS_SYSROOT=/path/windows-sysroot.sh/printed \
+  //Mojo/examples/windows-hello:hello
+```
+
+That produces `bazel-bin/Mojo/examples/windows-hello/hello.exe`, a PE32+ console executable, and building it involves cross compiling the Mojo compiler's own dependencies for the host, compiling the program with a Mojo compiler that runs on Linux, and linking the result against the MSVC runtime with `lld-link`.
+
+`--config=windows` is two flags, the platform and `MODULAR_TARGET`, and the second one is easy to leave out because it looks redundant. It is not. Without it every tool the build needs on the way to the answer gets configured for the target rather than for the machine doing the work, so Bazel cross compiles the Mojo compiler to Windows and then tries to execute it, and what you see is a launcher complaining about network paths.
+
+The executable is not standalone. It needs `KGENCompilerRTShared.dll`, `MSupportGlobals.dll` and `AsyncRTRuntimeGlobals.dll`, which end up under `bazel-bin/Mojo`, `bazel-bin/Support` and `bazel-bin/AsyncRT` respectively rather than next to the binary. Copy all three into the directory you run the executable from. The PE loader looks in the directory the executable is in and does not look anywhere useful after that, so being one directory away is the same as being absent, and being absent means the process exits with status zero having printed nothing at all.
+
+The reason they are not already there is that `copy_dynamic_libraries_to_binary` is a `cc_binary` feature, and a `mojo_binary` is not a `cc_binary`. That is #148. For now the copy is a step you do by hand, or a step your test harness does.
+
 ## Testing a cross build
 
 Bazel cannot natively run a Windows test from a Linux execution host. Start with `--run_under` and a small script that copies the binary over SSH and runs it. Roughly forty lines, and it gives a real Windows signal immediately. Bazel remote execution with a Windows executor is the architecturally correct answer and is worth doing later, once the shim's overhead is what is slowing you down.

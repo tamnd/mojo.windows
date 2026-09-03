@@ -1,0 +1,23 @@
+load("//bazel:api.bzl", "modular_run_binary_test", "mojo_binary")
+
+package(default_visibility = ["//visibility:private"])
+
+# Deliberately no `requirement()` here. Every other example package in this tree
+# pulls in numpy or pygame, which drags the Python side of the build into a
+# picture that is only meant to be about the compiler and the runtime, and which
+# does not resolve for a Windows target yet.
+mojo_binary(
+    name = "hello",
+    srcs = ["hello.mojo"],
+    deps = ["@mojo//:std"],
+)
+
+# Runs on whatever platform the build is configured for, so in practice this is
+# the host and it is here to keep the example honest rather than to test Windows.
+# Running the Windows build of it needs a Windows machine, and getting one of
+# those in front of a Bazel test is its own piece of work.
+modular_run_binary_test(
+    name = "hello_test",
+    size = "small",
+    binary = "hello",
+)
