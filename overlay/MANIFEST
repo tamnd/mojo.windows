@@ -31,9 +31,11 @@ new	-	Mojo/lib/KGENToLLVM/CABIWin64.cpp
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.h
 edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
 edit	ed6c8f8515f5cf564f169629107c7ea6d5f78d74	Mojo/stdlib/std/ffi/__init__.mojo
+new	-	Mojo/stdlib/std/sys/_dl.mojo
 edit	132e3af2f21a2d42a3611c9a4d53ff45fcecaa28	Mojo/stdlib/std/sys/info.mojo
 edit	5439bdaef796e82aacd354d0e674d5f4d62bbbb8	Mojo/stdlib/std/time/time.mojo
 edit	1e7a5e4e7b567b1f626efe9583ec968e78c3c901	Mojo/stdlib/test/sys/BUILD.bazel
+edit	e0df474d713fab3ddf649b784ebeb78a0e09a78b	Mojo/stdlib/test/sys/test_dlhandle.mojo
 new	-	Mojo/stdlib/test/sys/test_os_predicates.mojo
 edit	5d311b0c5c7ec6065b549dd7bfdfd80f46a05a6b	Mojo/stdlib/test/time/test_time.mojo
 new	-	Mojo/test/abi-conformance/BUILD.bazel

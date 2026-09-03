@@ -51,7 +51,7 @@ from std.collections.string.string_span import (
 )
 from std.os import PathLike as stdPathLike, abort
 from std.pathlib import Path
-from std.sys._libc import dlclose, dlerror, dlopen, dlsym
+from std.sys._dl import dl_clear_error, dl_close, dl_error, dl_open, dl_sym
 from std.sys._libc_errno import ErrNo, get_errno, set_errno
 
 from std.memory import OwnedPointer, Pointer
@@ -648,14 +648,9 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
     def _dlopen(
         file: OptionalPointer[mut=False, c_char, ImmUntrackedOrigin], flags: Int
     ) raises -> _DLHandle:
-        var handle = dlopen(file, Int32(flags))
+        var handle = dl_open(file, Int32(flags))
         if not handle:
-            var error_message = dlerror()
-            var message = StringSlice(
-                unsafe_from_utf8=CStringSlice(
-                    unsafe_from_ptr=error_message.value().as_imm()
-                )
-            ) if error_message else {}
+            var message = dl_error().or_else(String("unknown error"))
             raise Error("dlopen failed: ", message)
         return _DLHandle(handle)
 
@@ -668,7 +663,7 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
         Returns:
             `True` if the symbol exists.
         """
-        var opaque_function_ptr = dlsym(
+        var opaque_function_ptr = dl_sym(
             self.handle,
             name.as_c_string_slice().ptr(),
         )
@@ -685,7 +680,7 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
             using `OwnedDLHandle` which automatically manages the library
             lifetime.
         """
-        _ = dlclose(self.handle)
+        _ = dl_close(self.handle)
         self.handle = {}
 
     def __bool__(self) -> Bool:
@@ -820,20 +815,26 @@ struct _DLHandle(Boolable, ImplicitlyCopyable, RegisterPassable):
         # https://man7.org/linux/man-pages/man3/dlsym.3.html to distinguish
         # a symbol that was not found from a symbol whose value is NULL:
         #
-        # 1. Clear any old error with dlerror()
-        # 2. Call dlsym()
-        # 3. Call dlerror() again — if it returns non-NULL, an error occurred
+        # 1. Clear any old error
+        # 2. Look the symbol up
+        # 3. Read the error again, and if there is one, the lookup failed
+        #
+        # Windows needs the same three steps for the same reason, so these are
+        # the cross platform spellings rather than the POSIX ones. See
+        # `sys/_dl.mojo` for why the error is read as a value here and not as a
+        # borrowed pointer.
 
         # Clear any pre-existing error.
-        _ = dlerror()
+        dl_clear_error()
 
-        var res: Optional[Pointer[result_type, MutUntrackedOrigin]] = dlsym[
+        var res: Optional[Pointer[result_type, MutUntrackedOrigin]] = dl_sym[
             result_type
         ](self.handle, cstr_name.ptr())
 
         if not res:
-            # Result is NULL — check if it's an error or a valid NULL symbol.
-            var err = dlerror()
+            # Result is NULL, so either the lookup failed or the symbol really
+            # is NULL. The error tells us which.
+            var err = dl_error()
             if err:
                 # Symbol lookup failed.
                 return None
