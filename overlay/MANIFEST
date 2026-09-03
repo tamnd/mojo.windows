@@ -19,6 +19,8 @@ edit	6acb9727246db7b58efcfdfe27ac2338d5c7d015	Config/include/GeneratedVersion.h.
 edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
 edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 edit	59f6f330c21fe83dc6241eb535e4692521d45656	Mojo/lib/Compiler/ObjectCompiler/ObjectCompiler.cpp
+edit	d916230e014c471d175bdaff41f1d9eed6184b55	Mojo/lib/CompilerRT/Memory.h
+edit	d9f712923d162a14e6d7618bd9838221c4310878	Mojo/lib/CompilerRT/Python.cpp
 edit	3be1f0d71246e8f079a5695fd1c881cea6d3db1e	Mojo/lib/KGENToLLVM/CABILowering.cpp
 edit	2d04b3c80d840066ae526e282562f8aec44c1f41	Mojo/lib/KGENToLLVM/CABILowering.h
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.cpp
