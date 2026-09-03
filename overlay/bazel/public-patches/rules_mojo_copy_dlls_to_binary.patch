@@ -1,0 +1,62 @@
+--- a/mojo/private/mojo_binary_test.bzl
++++ b/mojo/private/mojo_binary_test.bzl
+@@ -253,6 +253,45 @@
+             if library.dynamic_library and not library.pic_static_library and not library.static_library:
+                 transitive_libraries.append(depset([library]))
+                 transitive_runfiles.append(ctx.runfiles(transitive_files = depset([library.dynamic_library])))
++
++    # Windows has no rpath, and the PE loader looks in the directory the
++    # executable is in and then in a short list of system directories and then
++    # gives up. So a shared library in the runfiles tree, or in the solib tree
++    # Bazel keeps at the top of the output tree, is as good as absent. Put a copy
++    # of each one beside the executable, which is the one place the loader is
++    # guaranteed to look.
++    #
++    # Bazel does this for cc_binary through the copy_dynamic_libraries_to_binary
++    # feature. This rule links through cc_common itself and never asks the
++    # feature configuration anything, so the answer never reaches it. Asking here
++    # is what connects the two.
++    #
++    # Worth knowing what the failure looks like, because it is quiet: a console
++    # process that cannot find a DLL exits with status zero having printed
++    # nothing, with no message and no dialog, which is indistinguishable from a
++    # program that ran and chose to say nothing.
++    #
++    # Only for an executable. A shared library is loaded by whatever loaded it
++    # and its dependencies are that program's problem.
++    copied_libraries = []
++    if not shared_library and cc_common.is_enabled(feature_configuration = feature_configuration, feature_name = "copy_dynamic_libraries_to_binary"):
++        seen = {}
++        for library in depset(transitive = transitive_libraries).to_list():
++            # With the feature on, Bazel skips making the solib symlink, so
++            # `dynamic_library` is the real file and the resolved field is None.
++            # With it off the two are a symlink and its target. Take whichever
++            # one is the file.
++            dynamic_library = library.resolved_symlink_dynamic_library or library.dynamic_library
++            if dynamic_library.basename in seen:
++                continue
++            seen[dynamic_library.basename] = True
++            if dynamic_library.dirname == linking_outputs.executable.dirname:
++                continue
++            copy = ctx.actions.declare_file(dynamic_library.basename, sibling = linking_outputs.executable)
++            ctx.actions.symlink(output = copy, target_file = dynamic_library, progress_message = "Copying Execution Dynamic Library")
++            copied_libraries.append(copy)
++    if copied_libraries:
++        transitive_runfiles.append(ctx.runfiles(files = copied_libraries))
+ 
+     python_path = ""
+     for path in depset(transitive = python_imports).to_list():
+@@ -333,6 +372,13 @@
+         return [
+             DefaultInfo(
+                 executable = linking_outputs.executable,
++                # The copies are named here as well as put in the runfiles so
++                # that a plain `bazel build` produces them. Somebody who has
++                # cross built an executable and is about to move it to a Windows
++                # machine wants them sitting next to it in bazel-bin, not only
++                # inside a runfiles tree that only `bazel run` and `bazel test`
++                # assemble.
++                files = depset([linking_outputs.executable] + copied_libraries),
+                 runfiles = runfiles.merge_all(transitive_runfiles),
+             ),
+             RunEnvironmentInfo(

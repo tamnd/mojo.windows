@@ -71,6 +71,12 @@ archive_override(
         # fail() when it finds nothing. That stopped every mojo_binary and
         # mojo_test in the tree at analysis for a Windows target.
         "//bazel/public-patches:rules_mojo_windows_libpython.patch",
+        # A mojo_binary links through cc_common itself, so it never asks the
+        # feature configuration about copy_dynamic_libraries_to_binary and never
+        # gets its DLLs put beside it the way a cc_binary does. On Windows that
+        # means the executable cannot find a single one of them, and the way it
+        # says so is to exit with status zero having printed nothing.
+        "//bazel/public-patches:rules_mojo_copy_dlls_to_binary.patch",
     ],
     strip_prefix = "rules_mojo-47643a3b441c20c3a351b8807e37c547338557c8",
     urls = [
