@@ -37,6 +37,14 @@ and the modes in `io.file` all carry it. It is defined for POSIX too so that
 somebody reading the flags on Linux can see that the decision was made rather
 than assume nobody thought about it.
 
+That covers files, and not the three standard streams, which the CRT has
+already opened in text mode before any code here runs, so there is no flag left
+to pass. Those are switched over at startup instead, by
+`_set_standard_streams_to_binary_mode` in `builtin/_startup.mojo`, which is also
+where the reasoning for picking binary is written down. `fd_set_binary_mode`
+below is what it calls, and is also for a descriptor that arrived from somewhere
+else.
+
 The second is seeking. The CRT has `_lseek`, which looks like the right
 function and takes a 32 bit offset, so it stops working at two gigabytes and
 does so quietly on exactly the files where it matters. `_lseeki64` is the one
@@ -73,6 +81,13 @@ comptime _S_IWRITE = 0x0080
 # caller already loops: a short read is not an error and a short write is not
 # either. Linux clamps its own `read` at the same value for the same reason.
 comptime _MAX_TRANSFER = 0x7FFF_F000
+
+# The two modes a descriptor can be in on Windows. The same numbers as
+# `io.file.O_BINARY`, which cannot be imported here because `io` is built on top
+# of this module, and which belong in the section that already spells out the
+# rest of the CRT's constants.
+comptime _O_TEXT = 0x4000
+comptime _O_BINARY = 0x8000
 
 # ===-----------------------------------------------------------------------===#
 # The cross platform surface
@@ -137,6 +152,46 @@ def fd_close(fd: Int) -> Int:
         return Int(external_call["_close", c_int](c_int(fd)))
     else:
         return Int(external_call["close", c_int](c_int(fd)))
+
+
+def fd_dup(fd: Int) -> Int:
+    """The lowest free descriptor, pointing at whatever `fd` points at."""
+    comptime if CompilationTarget.is_windows():
+        return Int(external_call["_dup", c_int](c_int(fd)))
+    else:
+        return Int(external_call["dup", c_int](c_int(fd)))
+
+
+def fd_dup2(source: Int, target: Int) -> Int:
+    """Points `target` at whatever `source` points at, closing it first."""
+    comptime if CompilationTarget.is_windows():
+        # The CRT returns zero on success rather than the new descriptor, which
+        # POSIX returns. Callers here only ask whether it worked, so the two
+        # are not reconciled. Say so, because a caller who assumed otherwise
+        # would find that the successful answer looks like descriptor zero.
+        return Int(external_call["_dup2", c_int](c_int(source), c_int(target)))
+    else:
+        return Int(external_call["dup2", c_int](c_int(source), c_int(target)))
+
+
+def fd_set_binary_mode(fd: Int) -> Int:
+    """Puts a descriptor into binary mode and returns the mode it was in.
+
+    Zero on POSIX, where there is one mode, nothing to change and nothing to
+    report. On Windows the answer is `_O_BINARY` or `_O_TEXT`, which is how a
+    caller can find out what the mode was without a second call, and is the
+    only way to find out at all.
+
+    The standard streams are already binary by the time a program's `main` is
+    entered. See `_set_standard_streams_to_binary_mode` in
+    `builtin/_startup.mojo` for who does that and why.
+    """
+    comptime if CompilationTarget.is_windows():
+        return Int(
+            external_call["_setmode", c_int](c_int(fd), c_int(_O_BINARY))
+        )
+    else:
+        return 0
 
 
 def fd_seek(fd: Int, offset: Int64, whence: Int) -> Int64:
