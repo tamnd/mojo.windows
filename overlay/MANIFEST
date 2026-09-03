@@ -43,6 +43,7 @@ new	-	Mojo/stdlib/std/os/path/_windows.mojo
 edit	70bd16b198a8404bfe3dd793dc39aff60036c933	Mojo/stdlib/std/os/path/path.mojo
 edit	49f0a675f554b8aad2fd008de4d2caf9608b856a	Mojo/stdlib/std/os/process.mojo
 edit	49811a43c7006034d968be77af81cb4872c155b1	Mojo/stdlib/std/pathlib/path.mojo
+edit	4c2c76da9ba0b8185dcd18512ce09d48e7595407	Mojo/stdlib/std/python/_cpython.mojo
 new	-	Mojo/stdlib/std/sys/_dl.mojo
 new	-	Mojo/stdlib/std/sys/_fd.mojo
 edit	80f7faad24d071b64f9fcff8f5e35bbb889e1a0f	Mojo/stdlib/std/sys/_libc_errno.mojo

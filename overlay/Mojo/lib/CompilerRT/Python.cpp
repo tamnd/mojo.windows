@@ -13,6 +13,7 @@
 
 #include "Support/Process.h"
 #include "Support/SymbolExport.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
@@ -34,12 +35,35 @@ using llvm::sys::findProgramByName;
 using llvm::sys::fs::is_regular_file;
 
 // Works across ubuntu 20.04, 22.04, macos, pyenv, conda, venv, virtual
+//
+// The Windows branch is not the same shape as the rest and does not need to be.
+// LIBPL and LIBDIR are both unset there, so `Path(None)` is a TypeError and the
+// loop below would have found nothing however long the list of directories got,
+// and the spelling is different too: the library is `python314.dll` rather than
+// `libpython3.14.dll`. Rather than reconstruct a name and then go looking for
+// it, the branch asks the loader where the library it is already running out of
+// came from. `sys.dllhandle` is the module handle of that library, and it is
+// exactly the file that wants loading. That answer is right for an installer
+// build, a store build, a venv and a conda environment without any of them
+// being thought about, and it is right for a free threaded build, whose library
+// has a `t` on the end of its name that a reconstruction would have to know
+// about.
 const char *FIND_LIBPYTHON = R"PROG(
 import os
 import sys
 from pathlib import Path
 from sysconfig import get_config_var
-ext = "dll" if os.name == "nt" else "dylib" if sys.platform == "darwin" else "so"
+if os.name == "nt":
+    import ctypes
+    name = ctypes.create_unicode_buffer(32768)
+    ctypes.windll.kernel32.GetModuleFileNameW(
+        ctypes.c_void_p(sys.dllhandle), name, len(name)
+    )
+    if not name.value:
+        exit(1)
+    print(name.value)
+    exit(0)
+ext = "dylib" if sys.platform == "darwin" else "so"
 pyver = get_config_var("py_version_short")
 abiflags = get_config_var("ABIFLAGS") or ""
 binary = f"libpython{pyver}{abiflags}.{ext}"
@@ -86,7 +110,8 @@ static std::optional<std::string> findLibPython(const std::string &pythonBin) {
   // the caller depends on that. The script exits 1 when it finds nothing, and
   // an empty result is not the same as no result: it means dlopen(nullptr), and
   // that is the working answer on a Linux where python is a PIE executable with
-  // CPython linked into it.
+  // CPython linked into it. See `isUsableLibPython` for why Windows is the
+  // exception.
   llvm::sys::ExecuteAndWait(pythonBin, args, /*Env=*/std::nullopt, redirects);
 
   auto buffer = llvm::MemoryBuffer::getFile(outputPath);
@@ -98,19 +123,81 @@ static std::optional<std::string> findLibPython(const std::string &pythonBin) {
   return result;
 }
 
+// The names to try on `PATH`, in the order to try them, which is not the same
+// order everywhere. On a Unix `python3` is the one that is certain to be a
+// Python 3 and `python` may be a Python 2 or may be missing, so `python3` goes
+// first. On Windows that convention never took: the installer lays down
+// `python.exe` and no `python3.exe` at all, and the only `python3.exe` on a
+// stock Windows 11 is the Microsoft Store stub, a program that prints an
+// advertisement for the store and exits without running anything. Looking for
+// `python3` first there finds the stub every time and never gets as far as the
+// real interpreter sitting beside it on `PATH`.
+//
+// The launcher, `py.exe`, is deliberately not in the list. It would find a
+// Python on a machine where neither name is on `PATH`, but it is not itself an
+// interpreter, and `PYTHONEXECUTABLE` is supposed to name one.
+static llvm::ArrayRef<llvm::StringRef> pythonProgramNames() {
+#ifdef _WIN32
+  static const llvm::StringRef names[] = {"python", "python3"};
+#else
+  static const llvm::StringRef names[] = {"python3", "python"};
+#endif
+  return names;
+}
+
+// Whether an answer from `findLibPython` is worth using.
+//
+// Everywhere but Windows an empty answer counts, because it means look for
+// CPython in the current process, which is the working answer on a Linux where
+// `python` is a PIE executable with the interpreter linked into it. Windows
+// never does that: the interpreter is always in a `pythonXY.dll` beside
+// `python.exe` and never inside it, and the loader has no handle that searches
+// every module in the process anyway. So an empty answer there is a candidate
+// that did not work rather than one that worked differently, and the caller
+// should go on to the next name. That is also how the Store stub gets
+// recognised, without this file having to know what its path looks like: it is
+// not a Python, so it produces nothing, so it is skipped.
+static bool isUsableLibPython(const std::optional<std::string> &libpython) {
+  if (!libpython)
+    return false;
+#ifdef _WIN32
+  return !libpython->empty();
+#else
+  return true;
+#endif
+}
+
 COMPILERRT_EXPORT COMPILERRT_VISIBILITY_EXPORT const char *
 KGEN_CompilerRT_Python_SetPythonPath() {
   auto pythonBin = llvm::sys::Process::GetEnv("MOJO_PYTHON").value_or("");
   if (!pythonBin.empty() && !is_regular_file(pythonBin))
     return "`MOJO_PYTHON` is not set to a file path.";
 
-  // If `MOJO_PYTHON` is not found, use python3 or python from  on top of `PATH`
-  if (pythonBin.empty()) {
-    auto pythonBinErr = findProgramByName("python3");
-    if (!pythonBinErr)
-      pythonBinErr = findProgramByName("python");
-    if (pythonBinErr)
-      pythonBin = *pythonBinErr;
+  // If `MOJO_PYTHON_LIBRARY` is set, the caller has settled the question and
+  // the interpreter is only wanted for `PYTHONEXECUTABLE`.
+  auto libpython = llvm::sys::Process::GetEnv("MOJO_PYTHON_LIBRARY");
+
+  if (!pythonBin.empty()) {
+    if (!libpython)
+      libpython = findLibPython(pythonBin);
+  } else {
+    // Take the first name on `PATH` that leads to a library, rather than the
+    // first name on `PATH`. The two used to be the same thing, because a
+    // program called python that is not a Python is not something a Unix has,
+    // and Windows has one installed by default.
+    for (llvm::StringRef name : pythonProgramNames()) {
+      auto found = findProgramByName(name);
+      if (!found)
+        continue;
+      pythonBin = *found;
+      if (libpython)
+        break;
+      auto candidate = findLibPython(pythonBin);
+      if (isUsableLibPython(candidate)) {
+        libpython = candidate;
+        break;
+      }
+    }
   }
 
   // `PYTHONEXECUTABLE` enables multiprocessing, and adding virtual environment
@@ -119,17 +206,15 @@ KGEN_CompilerRT_Python_SetPythonPath() {
     if (failed(setProcessEnv("PYTHONEXECUTABLE", pythonBin)))
       return "cannot set `PYTHONEXECUTABLE` to";
 
-  // If `MOJO_PYTHON_LIBRARY` is not set, run a Python script to find it.
-  auto libpython = llvm::sys::Process::GetEnv("MOJO_PYTHON_LIBRARY");
-  if (!libpython && !pythonBin.empty())
-    libpython = findLibPython(pythonBin);
-
   // Intentionally setting MOJO_PYTHON_LIBRARY to "" should result in
   // `dlopen(nullptr, ..)`, to look for CPython symbols in the current process.
   // That behavior is important on platforms (Linux), where the Python `python`
   // executable statically links the CPython implementation but can't be
-  // `dlopen()`'d directly because it is a PIE executable.
-  if (!libpython || (*libpython != "" && !is_regular_file(*libpython)))
+  // `dlopen()`'d directly because it is a PIE executable. On Windows there is
+  // nothing for it to mean, so an empty setting is an error there rather than
+  // an instruction.
+  if (!isUsableLibPython(libpython) ||
+      (*libpython != "" && !is_regular_file(*libpython)))
     return "found no suitable Python library to link to";
 
   if (failed(setProcessEnv("MOJO_PYTHON_LIBRARY", *libpython)))

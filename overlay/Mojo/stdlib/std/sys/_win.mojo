@@ -78,8 +78,13 @@ comptime _EXTENDED_UNC_PREFIX_BYTES = 8
 # ===-----------------------------------------------------------------------===#
 
 
-def to_utf16(text: Span[Byte, _]) -> List[UInt16]:
-    """UTF-8 in, UTF-16 with a nul on the end out."""
+def to_utf16(text: Span[Byte, _], *, is_path: Bool = True) -> List[UInt16]:
+    """UTF-8 in, UTF-16 with a nul on the end out.
+
+    Pass `is_path=False` for text that is not a path. Almost everything here is
+    one, so that is the default, but an environment variable or a message is
+    not and must not have its slashes rewritten.
+    """
     # Forward slashes become backslashes on the way through. The slashes
     # matter: the Win32 file APIs take either, but LoadLibraryEx with any of
     # the LOAD_LIBRARY_SEARCH flags rejects a name containing a forward slash,
@@ -109,6 +114,9 @@ def to_utf16(text: Span[Byte, _]) -> List[UInt16]:
     )
     if count <= 0:
         return List[UInt16](length=1, fill=0)
+
+    if not is_path:
+        return wide^
 
     comptime forward = UInt16(ord("/"))
     comptime backward = UInt16(ord("\\"))
