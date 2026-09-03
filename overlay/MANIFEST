@@ -43,6 +43,8 @@ edit	a8726b6e49d8730fa003dd3e3222a6c595ae8307	Support/lib/NixlPluginDir.cpp
 new	-	Support/lib/NixlPluginDirUnsupported.cpp
 edit	466c80292741c3d6ce1efc0edf6f12d2c0e19d41	Support/lib/Telemetry/TelemetryContext.cpp
 edit	00aaab4595f1ddd350c9ce5cfcb5dd96f7055528	Support/lib/Threading/HWInfo.cpp
+edit	fb5de8e3d95d9c7068fecc4b83a88db4c1439496	Support/unittests/BUILD.bazel
+new	-	Support/unittests/PlatformLibNamesTest.cpp
 edit	89d6d145bfd81c68ccc082d95bcede0896d545da	bazel/api.bzl
 edit	774a4f8fe6035ef5b580ca83876cc3828ee239a4	bazel/common.MODULE.bazel
 edit	586cd6589ac54d9adfa57362c41dc733abe08071	bazel/config.bzl
