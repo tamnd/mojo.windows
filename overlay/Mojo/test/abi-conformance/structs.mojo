@@ -30,7 +30,7 @@ failure and exits one otherwise.
 """
 
 from std.ffi import external_call
-from std.sys import exit, size_of
+from std.sys import exit
 
 from abi_probe import (
     check_count,
@@ -38,6 +38,7 @@ from abi_probe import (
     check_int,
     check_returned_float_field,
     check_returned_int_field,
+    check_size,
     reset,
 )
 
@@ -190,17 +191,6 @@ struct Nested(TrivialRegisterPassable):
 # So ask the other side. The size is what both conventions key on, so it is also
 # the thing worth agreeing about, and a failure here should be read before any
 # other failure in the run.
-
-
-def check_size[type: AnyType, size_probe: StaticString](
-    shape: StaticString
-) -> Int:
-    var theirs = Int(external_call[size_probe, Int32]())
-    var ours = size_of[type]()
-    if ours == theirs:
-        return 0
-    print("FAIL", shape, "is", ours, "bytes here and", theirs, "bytes in C")
-    return 1
 
 
 def test_layout() -> Int:

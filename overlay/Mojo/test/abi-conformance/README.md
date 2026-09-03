@@ -10,7 +10,7 @@ A hand written expectation is no help here, because the thing being tested is ex
 
 ## How it works
 
-Every case exists twice. Once in `probe.c`, compiled by the platform C compiler, which therefore follows the platform ABI by definition. Once in Mojo, calling into that through `external_call`. The C side records what actually arrived in each argument position, the Mojo side asks for the recording back and compares it against what it sent. A mismatch is a lowering bug in the Mojo compiler, pinned to one signature and one argument position.
+Every case exists twice. Once in C, in the `probe*.c` files, compiled by the platform C compiler and therefore following the platform ABI by definition. Once in Mojo, calling into that through `external_call`. The C side records what actually arrived in each argument position, the Mojo side asks for the recording back and compares it against what it sent. A mismatch is a lowering bug in the Mojo compiler, pinned to one signature and one argument position.
 
 Ground truth comes from the platform compiler rather than from anyone's reading of the specification, and that is the whole point. It also means the suite is useful the moment it is written, with no separate exercise to work out what the right answer is.
 
@@ -37,6 +37,23 @@ Scalar arguments and scalar returns, in `scalars.mojo`.
 - Nine arguments, which is past the register file under both conventions. Win64 spills from the fifth argument whatever its type, System V spills from the seventh integer and the ninth float counted separately, so the split between registers and stack is different on the two platforms and the stack half is only checked by running it.
 - Returns of each scalar type, including returns from calls that have already used up the register file.
 
+Struct arguments and struct returns, in `structs.mojo`. This is where the two conventions disagree most. Win64 looks at nothing but the size, so exactly 1, 2, 4 or 8 bytes goes in a register by value and everything else is copied to memory and passed as a hidden pointer that takes a register slot of its own. System V cuts the struct into eight byte pieces, classifies each piece by what is in it, and hands out up to two registers from whichever register files those pieces call for.
+
+- Byte structs at every size from 1 to 8, which is four sizes Win64 passes in a register and four it does not.
+- Structs of two and three 32 bit ints, two doubles, a float next to an int, two and three 64 bit ints, and a struct containing a struct.
+- The same shapes with scalar neighbours before and after them, because a struct that lands in the right place while pushing its neighbour into the wrong one is still a broken call.
+- Returns of every shape, which covers both the sizes that come back in registers and the sizes that come back through a hidden pointer the caller supplies.
+- A layout agreement check that runs before any of it. Every shape is spelled out twice, and the suite means nothing if the two spellings are not the same shape, so the C side reports `sizeof` and Mojo compares against `size_of`.
+
+C type widths and bools, in `widths.mojo`. The other two files ask where an argument lands. This one asks how many bytes it is before it goes anywhere, and it is the only part of the suite where the two platforms are supposed to give different answers.
+
+Worth knowing before reading it: on x86-64 a wrong width mostly does not show. Every argument takes a full eight byte slot whatever it is, in a register or on the stack, and the callee reads the low end of the slot, which is where a small number lives. Setting `c_long` to 64 bits on Windows and running this file leaves every value check in it passing. Only the direct width comparison catches it. That is why the widths get a check of their own rather than being something the value tests would have found anyway.
+
+- The width of `char`, `short`, `int`, `long`, `long long`, `size_t`, a pointer and `bool`, each against `sizeof` from the C side rather than against a number written down here.
+- Whether plain `char` is signed. Not a width, but the other thing the data model leaves open. It is signed on x86-64 Windows and Linux both and unsigned on ARM Linux, so it starts earning its keep at the arm64 port.
+- `long` six at a time, nine at a time so three of them spill, next to types whose width is fixed, and with negative values so that a caller which zero extends where it should sign extend is caught. `long long` gets the same treatment as a control.
+- Bools six at a time, between wider arguments, and past the register file where a caller that packed them into less than a full stack slot would be visible. Plus the raw byte a bool arrives as, which is the weakest check here because the C compiler is allowed to normalise it and hide a bad caller.
+
 ## What is not covered yet
 
-Structs of every interesting size and shape, struct returns, C `long` which is 32 bits on Windows and 64 on Linux, `SIMD[DType.float32, 4]` against `__m128`, varargs, shadow space, the callee saved register set including the extra XMM registers Win64 preserves, stack alignment with no red zone, and the upper bit guarantees on `bool`. Issue #13 tracks the rest.
+`SIMD[DType.float32, 4]` against `__m128`, varargs, shadow space, the callee saved register set including the extra XMM registers Win64 preserves, stack alignment with no red zone, and structs containing arrays. Issue #13 tracks the rest.

@@ -17,6 +17,7 @@ modular_cc_library(
     srcs = [
         "probe.c",
         "probe_structs.c",
+        "probe_widths.c",
     ],
     hdrs = ["probe.h"],
     alwayslink = True,
@@ -69,4 +70,20 @@ modular_run_binary_test(
     name = "structs_test",
     size = "small",
     binary = "structs",
+)
+
+mojo_binary(
+    name = "widths",
+    testonly = True,
+    srcs = ["widths.mojo"],
+    deps = [
+        ":abi_probe",
+        "@mojo//:std",
+    ],
+)
+
+modular_run_binary_test(
+    name = "widths_test",
+    size = "small",
+    binary = "widths",
 )

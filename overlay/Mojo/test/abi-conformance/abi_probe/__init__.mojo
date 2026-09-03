@@ -19,6 +19,7 @@ whole value of this suite is that a failure means the compiler is wrong.
 """
 
 from std.ffi import external_call
+from std.sys import size_of
 
 
 def reset():
@@ -151,6 +152,37 @@ def check_returned_float(probe: StaticString, got: Float64, want: Float64) -> In
     if got == want:
         return 0
     print("FAIL", probe, "returned", got, "expected", want)
+    return 1
+
+
+def check_size[type: AnyType, size_probe: StaticString](
+    name: StaticString
+) -> Int:
+    """Checks a type is the same number of bytes here as it is in C.
+
+    Every type in this suite is spelled out twice, once in Mojo and once in the
+    C probes, and the whole thing means nothing if the two spellings are not the
+    same type. This asks the C compiler for `sizeof` rather than comparing
+    against a number written down somewhere, because a number written down is
+    one more thing that can be wrong, and it would be wrong in the same
+    direction as the bug it is there to catch.
+
+    Parameters:
+        type: The Mojo side of the pair.
+        size_probe: The name of the C function that reports `sizeof` for the C
+            side of the pair.
+
+    Args:
+        name: What to call the type in the failure message.
+
+    Returns:
+        1 if the check failed, 0 if it passed.
+    """
+    var theirs = Int(external_call[size_probe, Int32]())
+    var ours = size_of[type]()
+    if ours == theirs:
+        return 0
+    print("FAIL", name, "is", ours, "bytes here and", theirs, "bytes in C")
     return 1
 
 
