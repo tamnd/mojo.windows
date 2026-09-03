@@ -1394,8 +1394,8 @@ static ErrorOr<BufferRef> createSharedObject(BufferRef buf,
       // it references at link time, and anything it expects from the process
       // that loads it has to arrive through an import library rather than a
       // linker flag. So a module that only refers to itself links here, and one
-      // that reaches back into the runtime does not until #37 gives that runtime
-      // an import library to link against.
+      // that reaches back into the runtime does not. That, and the fact that a
+      // COFF image exports nothing unless the object says so, is #134.
       SmallVector<StringRef> args = {linker, "-flavor", linkerFlavor};
       backend.appendLinkArgs(args, options);
       args.push_back("/DLL");

@@ -24,7 +24,8 @@
 // COM: way `-undefined dynamic_lookup` does on MachO, so the f32 version of this
 // COM: fails with `undefined symbol: _fltused` until the link gets a CRT import
 // COM: library to read. Nothing in the shared object path can paper over that,
-// COM: so this test stays inside what actually works today.
+// COM: so this test stays inside what actually works today. See #134, which also
+// COM: covers the fact that this DLL exports nothing.
 
 kgen.generator export @exp_i32(%arg: i32) -> i32 {
   kgen.return %arg : i32
