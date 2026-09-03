@@ -126,6 +126,14 @@ One version constraint fell out of that and it is worth knowing before you hit i
 
 Two things to check when wiring this up. `-Wl,--gc-sections` currently sits outside the `_WIN32` split in `mojo-build.cpp`, so on the Windows path it gets handed to a linker that does not understand it. The COFF equivalent is `/OPT:REF`. And the shared library path has no `/WHOLEARCHIVE:`, whose absence silently drops symbols out of static archives. Both are one line fixes once found, and both are good evidence that this code has never actually been run.
 
+### Where a Win32 import library gets named
+
+Ten of them are named once, in the toolchain, in the Windows arm of `link_args` in `bazel/internal/cc-toolchain/args/BUILD.bazel`: advapi32, comdlg32, gdi32, kernel32, ole32, oleaut32, shell32, user32, uuid and winspool. That is the set `cl.exe` has linked by default since the mid nineties, and it is the same set Bazel's own MSVC toolchain uses. Third party Windows code assumes it is present and does not name these libraries, because on Windows nobody has to.
+
+Everything else is named by the target that needs it, in its own `linkopts`, which is how `bcrypt` reaches mimalloc and `shlwapi` reaches google_benchmark. The line is there because we can edit our own targets and we cannot edit somebody else's. `@bazel_tools//src/tools/launcher` calls `RegGetValueW`, needs advapi32, and is not a file this repository can touch.
+
+Two things to get right when you add one. The spelling is `-Wl,/DEFAULTLIB:foo.lib`. Without the `-Wl,` prefix, clang's GNU driver reads `-DEFAULTLIB:foo.lib` as `-D EFAULTLIB:foo.lib`, defines a macro nobody wanted, links without a word of complaint, and the library never reaches the linker. And the library has to exist in the sysroot under `sdk/lib/um/x86_64`, which for the SDK we pin means all ten of the above and most of the usual suspects besides.
+
 ## Testing a cross build
 
 Bazel cannot natively run a Windows test from a Linux execution host. Start with `--run_under` and a small script that copies the binary over SSH and runs it. Roughly forty lines, and it gives a real Windows signal immediately. Bazel remote execution with a Windows executor is the architecturally correct answer and is worth doing later, once the shim's overhead is what is slowing you down.
