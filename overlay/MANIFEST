@@ -79,5 +79,6 @@ new	-	bazel/public-patches/curl_gnu_driver_flags.patch
 new	-	bazel/public-patches/google_benchmark_gnu_driver_flags.patch
 new	-	bazel/public-patches/llvm_windows_stack_flag.patch
 new	-	bazel/public-patches/mimalloc.BUILD
+new	-	bazel/public-patches/rules_mojo_windows_libpython.patch
 new	-	bazel/public-patches/rules_mypy_types_exec.patch
 new	-	bazel/public-patches/zlib_ng_gnu_driver_copts.patch

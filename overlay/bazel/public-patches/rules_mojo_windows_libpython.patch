@@ -1,0 +1,34 @@
+--- a/mojo/private/mojo_binary_test.bzl
++++ b/mojo/private/mojo_binary_test.bzl
+@@ -239,11 +239,28 @@
+         python_path += "../" + path + ":"
+ 
+     # https://github.com/bazelbuild/rules_python/issues/2262
+-    libpython = None
+-    for file in py_toolchain.py3_runtime.files.to_list():
+-        if file.basename.startswith("libpython"):
++    #
++    # A CPython install for Windows has no file whose name begins with
++    # `libpython`. The runtime library is `python313.dll` and the import library
++    # is `python313.lib`, both without the `lib` prefix, because that prefix is
++    # a Unix linker convention and Windows does not use it. Searching for one
++    # spelling and failing hard is why every mojo_binary and mojo_test in the
++    # tree stopped at analysis for a Windows target.
++    #
++    # MOJO_PYTHON_LIBRARY is opened at runtime rather than linked, so the DLL is
++    # the file to name here and the import library is not. `python3.dll` sits in
++    # the same directory and is also not it: it is the stable ABI forwarder and
++    # exports only the limited API, so the versioned DLL beside it is the one
++    # that has the symbols the interop needs.
++    libpython = None
++    for file in py_toolchain.py3_runtime.files.to_list():
++        basename = file.basename
++        if basename.startswith("libpython"):
+             libpython = file.short_path
+             break  # if there are multiple any of them should work and they are likely symlinks to each other
++        if basename.startswith("python") and basename.endswith(".dll") and basename != "python3.dll":
++            libpython = file.short_path
++            break
+ 
+     if not libpython:
+         fail("failed to find libpython, please report this at https://github.com/modular/rules_mojo/issues")
