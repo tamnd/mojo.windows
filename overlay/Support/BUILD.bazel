@@ -300,6 +300,9 @@ modular_cc_library(
         "//max/python/max:__pkg__",
     ],
     deps = [
+        # For PlatformLibrary, which is where the shared libraries in the
+        # runfile mapping table get their file names.
+        ":Base",
         "@llvm-project//llvm:Support",
         "@rules_cc//cc/runfiles",
     ],
