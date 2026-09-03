@@ -18,6 +18,8 @@ edit	ad5d85aa897cbf31a7767237adb8dba2aa3570c3	Config/include/Config/Version.h
 edit	6acb9727246db7b58efcfdfe27ac2338d5c7d015	Config/include/GeneratedVersion.h.tmpl
 edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
 edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
+new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo
+new	-	Mojo/test/mojo-tool/build/windows_target_link_line.mojo
 edit	72cae2136da1542c64670923232b36ffac55f6a5	Mojo/tools/mojo/Build/mojo-build.cpp
 edit	9958fb19c8e9b86a4636b088a591b381170417fe	Mojo/tools/mojo/DriverOptions.td
 edit	e3376e74de03f0d0b2b99e312639ba548d060ec7	Mojo/tools/mojo/mojo.cpp
@@ -49,6 +51,7 @@ edit	bbd8b61acf0020064c89e9eb1280984530b887e0	bazel/internal/cc-toolchain/tools/
 new	-	bazel/internal/cc-toolchain/windows_sysroot_repository.bzl
 edit	edb67a035194ce0b99f28058a68828d923170991	bazel/internal/config.bzl
 edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.bazel
+edit	628de647178acb5de5fa6824e1a77ba303f5807c	bazel/internal/llvm-lit/validate_lit_features.py
 edit	cedbc002df2a280bad77f4de603a073449fe858a	bazel/internal/modular_versioned_expand_template.bzl
 edit	4e7575d34ad20d592013a888c5cd56b37d372a48	bazel/internal/runtool-shim.cpp
 new	-	bazel/public-patches/boringssl_gnu_driver_flags.patch

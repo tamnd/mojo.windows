@@ -641,6 +641,13 @@ static std::string getSharedLibraryFileName(const llvm::Triple &triple,
   return ("lib" + stem + ".so").str();
 }
 
+/// The four CRT import libraries an MSVC style link can name. If the install
+/// already names one of these in `system_libs` then it has an opinion, and
+/// this file must not add a second one: naming two of them is a link error
+/// rather than a preference.
+static constexpr const char *kWindowsCRTLibs[] = {"msvcrt.lib", "msvcrtd.lib",
+                                                  "libcmt.lib", "libcmtd.lib"};
+
 /// Find the linker called `linkerFilename`, looking in the directory lld ships
 /// in before falling back to PATH. That order is the whole point when the
 /// target is Windows: the linker we want is the one that came with mojo, not
@@ -732,8 +739,17 @@ static int linkOutput(OutputType outputType, const State &state,
   // directory.
   StringRef inputName = args.getLastArgValue(options::OPT_INPUT);
 
-  // Get the file base name, e.g. `foo` in `foo.mojo`.
-  StringRef inputBaseName = inputName.rsplit('.').first;
+  // Get the file base name, e.g. `foo` in `dir/foo.mojo`. The directory comes
+  // off here rather than after the name has been built, which is a change: it
+  // used to be `inputName.rsplit('.').first`, keeping `dir/foo`, and the
+  // directory was dropped further down by taking `filename()` of the result.
+  // That ordering loses the `lib` prefix a shared library has everywhere except
+  // Windows, because `lib` + `dir/foo` + `.so` has the prefix glued to the
+  // directory and `filename()` then throws the whole lot away. It only ever
+  // showed up when the input was named with a path.
+  std::string inputStem =
+      std::filesystem::path(inputName.str()).stem().string();
+  StringRef inputBaseName = inputStem;
 
   std::string defaultOutputName = [outputType, inputBaseName, binaryExt,
                                    &triple] {
@@ -873,8 +889,32 @@ static int linkOutput(OutputType outputType, const State &state,
     return linkerInvocation;
   }();
 
-  // Add other shared libs
-  config.appendSharedLibraryLinkArgs(linkerArgs);
+  // Read the configured system libraries here rather than at the point they
+  // get appended, because the Windows CRT choice below has to know whether one
+  // of them is already a CRT.
+  SmallVector<StringRef> systemLibs;
+  config.appendSystemLibraryLinkArgs(systemLibs);
+
+  // Add other shared libs.
+  //
+  // Windows needs a filter on the way through. When `shared_libs` is not set
+  // in the config, MojoConfig makes up `-Xlinker -rpath -Xlinker <libdir>`,
+  // and an ELF rpath means nothing to lld-link: it does not know -rpath, so it
+  // warns about the flag and then reads the directory that followed it as an
+  // input file. Nothing is lost by dropping them, because the PE loader
+  // already starts its search in the directory the executable was loaded from.
+  // This is the same subtraction the Bazel linker driver does, for the same
+  // reason.
+  SmallVector<StringRef> sharedLibArgs;
+  config.appendSharedLibraryLinkArgs(sharedLibArgs);
+  for (size_t i = 0, e = sharedLibArgs.size(); i < e; ++i) {
+    if (isWindows && sharedLibArgs[i] == "-Xlinker" && i + 1 < e &&
+        sharedLibArgs[i + 1] == "-rpath") {
+      i += 3;
+      continue;
+    }
+    linkerArgs.emplace_back(sharedLibArgs[i]);
+  }
 
   if (isWindows) {
     linkerArgs.emplace_back(outputArg);
@@ -885,16 +925,25 @@ static int linkOutput(OutputType outputType, const State &state,
     linkerArgs.emplace_back("/IGNORE:4001");
 
     // Add the right VCRT to match the one used when building KGENCompilerRT.
-    // This one is honestly a host question and stays a host question: it is
-    // asking which CRT the runtime sitting next to this binary was built
-    // against, and the compiler and the runtime are built together. A cross
-    // build never defines _DEBUG, so it takes the release CRT, which is the
-    // right answer for a cross build.
-#if defined(_DEBUG)
-    linkerArgs.emplace_back("msvcrtd.lib");
-#else
-    linkerArgs.emplace_back("msvcrt.lib");
-#endif
+    // This used to be `#if _DEBUG`, which asks how the compiler itself was
+    // built and gets it wrong in the direction that hurts. A debug build of
+    // mojo cross compiling to Windows asked for msvcrtd.lib, which is not
+    // what the runtime it is linking against was built with, and mixing the
+    // two CRTs is the classic Windows link that either fails with duplicate
+    // symbols or succeeds and then crashes on the first free. Checked, not
+    // guessed at: a Linux -c dbg build of this compiler does define _DEBUG,
+    // so that branch was live and wrong rather than dead and wrong.
+    //
+    // Release CRT by default, and `system_libs` in modular.cfg is where to
+    // say otherwise, which is where an install would already be naming any
+    // other library it happens to need.
+    const bool haveCRT = llvm::any_of(systemLibs, [](StringRef lib) {
+      return llvm::any_of(kWindowsCRTLibs, [&](const char *crt) {
+        return lib.equals_insensitive(crt);
+      });
+    });
+    if (!haveCRT)
+      linkerArgs.emplace_back("msvcrt.lib");
 
     // Mojo only supports X86_64 COFF right now. That used to be a comment
     // above a hardcoded /machine:X64, and now that the target decides rather
@@ -952,8 +1001,8 @@ static int linkOutput(OutputType outputType, const State &state,
   if (!isDarwin && !isWindows)
     linkerArgs.emplace_back("-lm");
 
-  // Add any necessary system libraries.
-  config.appendSystemLibraryLinkArgs(linkerArgs);
+  // Add any necessary system libraries, read further up.
+  linkerArgs.append(systemLibs.begin(), systemLibs.end());
 
   // Propagate any user-supplied linker flags. Add these last so they take
   // precedence.
