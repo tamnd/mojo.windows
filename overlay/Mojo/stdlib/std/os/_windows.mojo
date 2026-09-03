@@ -55,7 +55,14 @@ from std.collections import Array
 from std.ffi import external_call
 from std.stat.stat import S_IFLNK
 from std.sys import align_of, size_of
-from std.sys._win import error_message, last_error, to_utf16, to_utf8, wide_len
+from std.sys._win import (
+    error_message,
+    final_path,
+    last_error,
+    to_utf16,
+    to_utf8,
+    wide_len,
+)
 from std.time.time import (
     _CTimeSpec,
     _FILETIME_TICKS_PER_NSEC,
@@ -121,12 +128,6 @@ comptime _OPEN_EXISTING = UInt32(3)
 # about nothing else.
 comptime _FILE_FLAG_BACKUP_SEMANTICS = UInt32(0x0200_0000)
 
-# GetFinalPathNameByHandleW: the normalised name, spelled with a drive letter
-# rather than with the volume GUID. Both are zero, and they are written out
-# because a reader should not have to know that to see which flags are meant.
-comptime _FILE_NAME_NORMALIZED = UInt32(0x0)
-comptime _VOLUME_NAME_DOS = UInt32(0x0)
-
 # CreateSymbolicLinkW says up front whether the target is a directory, because
 # it has to create the reparse point before anything resolves it.
 comptime _SYMBOLIC_LINK_FLAG_DIRECTORY = UInt32(0x1)
@@ -139,21 +140,6 @@ comptime _SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE = UInt32(0x2)
 
 comptime _ERROR_INVALID_PARAMETER = UInt32(87)
 comptime _ERROR_PRIVILEGE_NOT_HELD = UInt32(1314)
-
-# How long a path GetFinalPathNameByHandleW is asked for before it is asked
-# again with room for the answer. Long enough that the second call almost never
-# happens and small enough to be a stack sized allocation if it ever becomes
-# one.
-comptime _PATH_CHARS = 512
-
-# The prefix that turns off path parsing in the kernel, and the longer one that
-# does the same for a share. Both come back from GetFinalPathNameByHandleW and
-# neither is what a caller asked about. The lengths are written out because they
-# are used to cut the string and both prefixes are pure ASCII.
-comptime _EXTENDED_PREFIX = "\\\\?\\"
-comptime _EXTENDED_PREFIX_BYTES = 4
-comptime _EXTENDED_UNC_PREFIX = "\\\\?\\UNC\\"
-comptime _EXTENDED_UNC_PREFIX_BYTES = 8
 
 
 # ===-----------------------------------------------------------------------===#
@@ -863,33 +849,15 @@ def _symlink(var target: String, var linkpath: String) raises:
         )
 
 
-def _strip_extended_prefix(var path: String) -> String:
-    """`\\\\?\\C:\\dir` back to `C:\\dir`, and the share form back to
-    `\\\\server\\share`."""
-    if path.startswith(_EXTENDED_UNC_PREFIX):
-        return String("\\\\", path[byte=_EXTENDED_UNC_PREFIX_BYTES :])
-    if path.startswith(_EXTENDED_PREFIX):
-        return String(path[byte=_EXTENDED_PREFIX_BYTES :])
-    return path^
-
-
 def _realpath(var path: String) raises -> String:
     """The canonical name of a file that exists.
 
-    GetFinalPathNameByHandleW is the only call that resolves the whole chain,
-    and it does it by working from an open handle and asking the filesystem what
-    that handle ended up referring to. So this opens the file, and so this fails
-    for a name that is not there. POSIX `realpath` fails there too, which means
-    the two platforms agree, and a caller that wants an answer for a path which
-    does not exist yet wants `abspath`.
-
-    The name comes back in the extended form, `\\\\?\\C:\\dir\\file`. That is a
-    real path and not one anybody wants to read or compare against, so the
-    prefix comes off, and `\\\\?\\UNC\\server\\share` goes back to
-    `\\\\server\\share`. Both are what CPython's `ntpath.realpath` does. It is
-    lossy in exactly one case, a result past 260 characters, which needs the
-    prefix to be opened again. Agreeing with CPython is worth more than being
-    right about a path nobody on this platform can type.
+    The call that answers this works from an open handle rather than from a
+    name, so this opens the file, and so this fails for a name that is not
+    there. POSIX `realpath` fails there too, which means the two platforms
+    agree, and a caller that wants an answer for a path which does not exist
+    yet wants `abspath`. `final_path` in `sys._win` is the rest of it, and is
+    there rather than here because `sys._fd` needs the same thing.
     """
     var wide = to_utf16(path.as_bytes())
     var handle = _open_for_query(wide)
@@ -897,31 +865,10 @@ def _realpath(var path: String) raises -> String:
     if handle == _INVALID_HANDLE_VALUE:
         raise Error("realpath failed to resolve: ", error_message(last_error()))
 
-    comptime flags = _FILE_NAME_NORMALIZED | _VOLUME_NAME_DOS
-    var buffer = List[UInt16](length=_PATH_CHARS, fill=0)
-    var count = Int(
-        external_call["GetFinalPathNameByHandleW", UInt32](
-            handle, buffer.unsafe_ptr(), UInt32(_PATH_CHARS), flags
-        )
-    )
-
-    # A count that fills the buffer is the call saying it did not fit, and the
-    # number is then what it needs including the nul. Asking again is the whole
-    # of the retry, since the handle is still open and the answer cannot have
-    # changed underneath it.
-    if count >= _PATH_CHARS:
-        buffer = List[UInt16](length=count + 1, fill=0)
-        count = Int(
-            external_call["GetFinalPathNameByHandleW", UInt32](
-                handle, buffer.unsafe_ptr(), UInt32(count + 1), flags
-            )
-        )
-
-    var code = last_error()
-    _ = external_call["CloseHandle", Int32](handle)
-    if count == 0:
-        raise Error("realpath failed to resolve: ", error_message(code))
-
-    var resolved = to_utf8(Span(unsafe_ptr=buffer.unsafe_ptr(), length=count))
-    _ = buffer^
-    return _strip_extended_prefix(resolved^)
+    try:
+        var resolved = final_path(handle)
+        _ = external_call["CloseHandle", Int32](handle)
+        return resolved^
+    except e:
+        _ = external_call["CloseHandle", Int32](handle)
+        raise Error("realpath failed to resolve: ", e)

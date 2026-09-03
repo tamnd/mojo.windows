@@ -18,6 +18,12 @@ into a sentence takes a call. Both of those come up in every module that binds
 anything on Windows, which is why they are here rather than in whichever module
 happened to want them first.
 
+Getting a path back out of an open handle is here for the same reason. It is
+the only way to answer either "what does this name really refer to" or "where
+is this descriptor pointing", so `os.path.realpath` and the descriptor based
+directory change in `sys._fd` both need it, and neither of those modules can
+import the other. See `final_path`.
+
 Nothing in this file is conditional. It only compiles on Windows and callers
 are expected to have already decided that, the same way `_libc` only makes
 sense on POSIX. The modules above are where the two systems get reconciled.
@@ -39,6 +45,26 @@ comptime _FORMAT_MESSAGE_IGNORE_INSERTS = UInt32(0x200)
 # a LocalFree and this is a failure path, which is the worst place to add a way
 # to leak.
 comptime _MESSAGE_CHARS = 512
+
+# GetFinalPathNameByHandleW: the normalised name, spelled with a drive letter
+# rather than with the volume GUID. Both are zero, and they are written out
+# because a reader should not have to know that to see which flags are meant.
+comptime _FILE_NAME_NORMALIZED = UInt32(0x0)
+comptime _VOLUME_NAME_DOS = UInt32(0x0)
+
+# How long a path is asked for before it is asked again with room for the
+# answer. Long enough that the second call almost never happens and small
+# enough to be a stack sized allocation if it ever becomes one.
+comptime _PATH_CHARS = 512
+
+# The prefix that turns off path parsing in the kernel, and the longer one that
+# does the same for a share. Both come back from GetFinalPathNameByHandleW and
+# neither is what a caller asked about. The lengths are written out because
+# they are used to cut the string and both prefixes are pure ASCII.
+comptime _EXTENDED_PREFIX = "\\\\?\\"
+comptime _EXTENDED_PREFIX_BYTES = 4
+comptime _EXTENDED_UNC_PREFIX = "\\\\?\\UNC\\"
+comptime _EXTENDED_UNC_PREFIX_BYTES = 8
 
 
 # ===-----------------------------------------------------------------------===#
@@ -186,3 +212,63 @@ def error_message(code: UInt32) -> String:
     var message = to_utf8(Span(unsafe_ptr=buffer.unsafe_ptr(), length=count))
     _ = buffer^
     return message^
+
+
+# ===-----------------------------------------------------------------------===#
+# Paths
+# ===-----------------------------------------------------------------------===#
+
+
+def _strip_extended_prefix(var path: String) -> String:
+    """`\\\\?\\C:\\dir` back to `C:\\dir`, and the share form back to
+    `\\\\server\\share`."""
+    if path.startswith(_EXTENDED_UNC_PREFIX):
+        return String("\\\\", path[byte=_EXTENDED_UNC_PREFIX_BYTES :])
+    if path.startswith(_EXTENDED_PREFIX):
+        return String(path[byte=_EXTENDED_PREFIX_BYTES :])
+    return path^
+
+
+def final_path(handle: Int) raises -> String:
+    """Where an open handle actually points, as a path.
+
+    This is the only call that resolves a whole chain of links, and it works
+    from a handle rather than from a name, which is why two unrelated things
+    need it. `os.path.realpath` opens the name it was given and asks this. The
+    descriptor based directory change in `sys._fd` has a descriptor already and
+    asks the same question of it, because Windows has no `fchdir` and the only
+    way to one is to turn the descriptor back into a path.
+
+    The name comes back in the extended `\\\\?\\` form, which is a real path and
+    not one anybody wants to read or compare against, so the prefix comes off
+    here. That is what CPython's `ntpath.realpath` does too. It is lossy in
+    exactly one case, a result past 260 characters, which needs the prefix in
+    order to be opened again. Agreeing with CPython is worth more than being
+    right about a path nobody on this platform can type.
+    """
+    comptime flags = _FILE_NAME_NORMALIZED | _VOLUME_NAME_DOS
+    var buffer = List[UInt16](length=_PATH_CHARS, fill=0)
+    var count = Int(
+        external_call["GetFinalPathNameByHandleW", UInt32](
+            handle, buffer.unsafe_ptr(), UInt32(_PATH_CHARS), flags
+        )
+    )
+
+    # A count that fills the buffer is the call saying it did not fit, and the
+    # number is then what it needs including the nul. Asking again is the whole
+    # of the retry, since the handle is still open and the answer cannot have
+    # changed underneath it.
+    if count >= _PATH_CHARS:
+        buffer = List[UInt16](length=count + 1, fill=0)
+        count = Int(
+            external_call["GetFinalPathNameByHandleW", UInt32](
+                handle, buffer.unsafe_ptr(), UInt32(count + 1), flags
+            )
+        )
+
+    if count == 0:
+        raise Error(error_message(last_error()))
+
+    var resolved = to_utf8(Span(unsafe_ptr=buffer.unsafe_ptr(), length=count))
+    _ = buffer^
+    return _strip_extended_prefix(resolved^)

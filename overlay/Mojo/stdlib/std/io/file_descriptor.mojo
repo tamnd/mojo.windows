@@ -39,6 +39,7 @@ from std.ffi import (
     get_errno,
 )
 from std.sys._fd import fd_chdir, fd_isatty, fd_read, fd_write
+from std.sys._win import error_message, last_error
 
 from std.collections import Span
 
@@ -150,10 +151,16 @@ struct FileDescriptor(TrivialRegisterPassable, Writer):
 
         Raises:
             If the operations fails. In particular if the fd is
-            not a directory. On Windows this always raises, because a
-            directory cannot be opened as a file descriptor there at all.
+            not a directory.
         """
         var result = fd_chdir(self.value)
         if result < 0:
-            var err = get_errno()
-            raise Error("fchdir failed err: ", String(err))
+            # Windows has no `fchdir` and the calls this is built out of report
+            # through GetLastError rather than through errno, so an errno here
+            # would be whatever the last CRT call happened to leave behind. See
+            # `fd_chdir` in `sys._fd`.
+            comptime if CompilationTarget.is_windows():
+                raise Error("fchdir failed err: ", error_message(last_error()))
+            else:
+                var err = get_errno()
+                raise Error("fchdir failed err: ", String(err))

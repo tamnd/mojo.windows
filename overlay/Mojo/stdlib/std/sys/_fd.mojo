@@ -50,8 +50,9 @@ function and takes a 32 bit offset, so it stops working at two gigabytes and
 does so quietly on exactly the files where it matters. `_lseeki64` is the one
 to use and this module uses only that.
 
-The third is `fchdir`, which does not exist on Windows and cannot be built out
-of anything that does. See `fd_chdir` below for why.
+The third is `fchdir`, which does not exist on Windows. It is built here out of
+two calls that do, and getting a descriptor to pass it needs a detour of its
+own. See `fd_open` and `fd_chdir`.
 
 Paths go in as UTF-16. A Mojo `String` is UTF-8 and the narrow `_open` takes
 the process code page, which on most installs is not UTF-8, so a path with a
@@ -62,7 +63,7 @@ asked for. `_wopen` takes the conversion out of the picture.
 from std.ffi import c_int, c_ssize_t, c_uint, external_call
 from std.memory.address_space import AddressSpace
 from std.sys import CompilationTarget
-from std.sys._win import to_utf16
+from std.sys._win import final_path, to_utf16
 
 # ===-----------------------------------------------------------------------===#
 # CRT constants
@@ -89,21 +90,111 @@ comptime _MAX_TRANSFER = 0x7FFF_F000
 comptime _O_TEXT = 0x4000
 comptime _O_BINARY = 0x8000
 
+# The access mode bits, and the value that means read only. The CRT packs the
+# mode into the low two bits of the same int as the flags, so this is a mask
+# and not a flag, and read only is the absence of the other two rather than a
+# bit of its own.
+comptime _O_ACCMODE = 0x0003
+comptime _O_RDONLY = 0x0000
+
+# ===-----------------------------------------------------------------------===#
+# Win32 constants
+# ===-----------------------------------------------------------------------===#
+
+# What CreateFileW needs to open a directory in order to ask where it is.
+# FILE_READ_ATTRIBUTES is enough for GetFinalPathNameByHandleW, and it is the
+# access a directory somebody else is working in will still grant. All three
+# share bits are set because the default is to share nothing, which would make
+# opening a busy directory fail for a reason that has nothing to do with the
+# request.
+comptime _FILE_READ_ATTRIBUTES = UInt32(0x80)
+comptime _FILE_SHARE_ALL = UInt32(0x7)
+comptime _OPEN_EXISTING = UInt32(3)
+
+# Without this CreateFileW cannot open a directory at all, which is the most
+# surprising thing about it. The name is about backup programs and the flag is
+# about nothing else.
+comptime _FILE_FLAG_BACKUP_SEMANTICS = UInt32(0x0200_0000)
+
+comptime _INVALID_HANDLE_VALUE = -1
+comptime _INVALID_FILE_ATTRIBUTES = UInt32(0xFFFF_FFFF)
+comptime _FILE_ATTRIBUTE_DIRECTORY = UInt32(0x10)
+
 # ===-----------------------------------------------------------------------===#
 # The cross platform surface
 # ===-----------------------------------------------------------------------===#
 
 
+def _open_directory(wide: List[UInt16], flags: Int) -> Int:
+    """A descriptor for a directory, which the CRT will not open for you.
+
+    `_wopen` on a directory fails with EACCES, and there is no flag that
+    changes its mind. The only route to a directory handle is CreateFileW with
+    FILE_FLAG_BACKUP_SEMANTICS, and `_open_osfhandle` will then take that
+    handle into the descriptor table without asking what is behind it, which is
+    what makes this possible at all.
+
+    Read only, because that is the only thing POSIX lets you do with a
+    directory descriptor either. `open(dir, O_WRONLY)` is EISDIR there and the
+    caller here is left with the EACCES the CRT already reported.
+
+    The descriptor owns the handle from here on. `_close` on it closes the
+    handle, which is why nothing in the failure path below closes it twice.
+    """
+    if (flags & _O_ACCMODE) != _O_RDONLY:
+        return -1
+
+    var attributes = external_call["GetFileAttributesW", UInt32](
+        wide.unsafe_ptr()
+    )
+    if (
+        attributes == _INVALID_FILE_ATTRIBUTES
+        or (attributes & _FILE_ATTRIBUTE_DIRECTORY) == 0
+    ):
+        return -1
+
+    var handle = external_call["CreateFileW", Int](
+        wide.unsafe_ptr(),
+        _FILE_READ_ATTRIBUTES,
+        _FILE_SHARE_ALL,
+        # No security attributes, which is what anything not creating something
+        # passes.
+        OptionalPointer[NoneType, MutUntrackedOrigin](),
+        _OPEN_EXISTING,
+        _FILE_FLAG_BACKUP_SEMANTICS,
+        # No template file, which is also only meaningful when creating.
+        Int(0),
+    )
+    if handle == _INVALID_HANDLE_VALUE:
+        return -1
+
+    var fd = Int(
+        external_call["_open_osfhandle", c_int](handle, c_int(_O_RDONLY))
+    )
+    if fd < 0:
+        _ = external_call["CloseHandle", Int32](handle)
+    return fd
+
+
 def fd_open(path: String, flags: Int) -> Int:
     comptime if CompilationTarget.is_windows():
         var wide = to_utf16(path.as_bytes())
-        var fd = external_call["_wopen", c_int, num_fixed_args=2](
-            wide.unsafe_ptr(), c_int(flags), c_int(_S_IREAD | _S_IWRITE)
+        var fd = Int(
+            external_call["_wopen", c_int, num_fixed_args=2](
+                wide.unsafe_ptr(), c_int(flags), c_int(_S_IREAD | _S_IWRITE)
+            )
         )
+        # A directory is the one thing `_wopen` refuses that POSIX allows, and
+        # a caller that wants one wants it in order to pass it to `fd_chdir`.
+        # Only tried after the ordinary open has failed, so nothing that works
+        # today pays for it, and the errno from that failure is left alone so
+        # that a file which really was denied still reports what happened.
+        if fd < 0:
+            fd = _open_directory(wide, flags)
         # Nothing ties `wide` to the call, so say so, or the buffer can be
         # freed while the CRT is still reading the name out of it.
         _ = wide^
-        return Int(fd)
+        return fd
     else:
         var path_str = path
         return Int(
@@ -217,22 +308,30 @@ def fd_isatty(fd: Int) -> Bool:
 
 def fd_chdir(fd: Int) raises -> Int:
     comptime if CompilationTarget.is_windows():
-        # There is no way to write this, and the reason sits one step further
-        # back than it looks. `fchdir` needs a descriptor for a directory, and
-        # on Windows there is no such thing: `_wopen` on a directory fails with
-        # EACCES, so a caller cannot get as far as having something to pass in.
-        # Going around the CRT does not help either, because the only way to a
-        # directory handle is `CreateFileW` with FILE_FLAG_BACKUP_SEMANTICS and
-        # the CRT will not take one of those into its descriptor table.
+        # No `fchdir`, and nothing that takes a descriptor at all: the call
+        # that changes directory is SetCurrentDirectoryW and it wants a path.
+        # So the descriptor goes back to a handle, the handle goes back to a
+        # path, and the path is what gets used. That middle step is the only
+        # reason this works, because a path is the one thing a handle can
+        # always be turned back into.
         #
-        # Raising rather than returning a failure code, because an errno would
-        # say the descriptor was bad when the truth is that the operation does
-        # not exist, and that would send whoever hits it looking in the wrong
-        # place.
-        _ = fd
-        raise Error(
-            "fchdir is not available on Windows, because a directory cannot be"
-            " opened as a file descriptor there. Use chdir with a path."
+        # Reaching a directory descriptor to pass in here needs its own detour
+        # on the way out. See `_open_directory` above.
+        var handle = Int(external_call["_get_osfhandle", Int](c_int(fd)))
+        if handle == _INVALID_HANDLE_VALUE:
+            return -1
+
+        var path: String
+        try:
+            path = final_path(handle)
+        except:
+            return -1
+
+        var wide = to_utf16(path.as_bytes())
+        var ok = external_call["SetCurrentDirectoryW", Int32](
+            wide.unsafe_ptr()
         )
+        _ = wide^
+        return 0 if ok != 0 else -1
     else:
         return Int(external_call["fchdir", c_int](c_int(fd)))
