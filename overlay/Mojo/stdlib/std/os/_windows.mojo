@@ -40,13 +40,17 @@ Windows has a creation time and no status change time at all.
 
 `lstat` is the interesting one, because the CRT does not have it and cannot be
 made to. See `_lstat` below.
+
+Listing a directory is here too, for the same reason: `opendir` and `readdir`
+are not in the CRT either, and the Win32 way of walking a directory hands back
+the same `WIN32_FIND_DATAW` that `_lstat` already needed. See `_listdir`.
 """
 
 from std.collections import Array
 from std.ffi import external_call
 from std.stat.stat import S_IFLNK
 from std.sys import align_of, size_of
-from std.sys._win import to_utf16
+from std.sys._win import error_message, last_error, to_utf16, to_utf8, wide_len
 from std.time.time import (
     _CTimeSpec,
     _FILETIME_TICKS_PER_NSEC,
@@ -76,6 +80,13 @@ comptime _IO_REPARSE_TAG_SYMLINK = UInt32(0xA000_000C)
 comptime _IO_REPARSE_TAG_MOUNT_POINT = UInt32(0xA000_0003)
 
 comptime _INVALID_HANDLE_VALUE = -1
+
+comptime _FILE_ATTRIBUTE_DIRECTORY = UInt32(0x10)
+
+# How FindNextFileW says the enumeration is over. It reports that by failing,
+# so every walk of a directory ends in an error that is not one, and the only
+# way to tell it apart from a real failure is to look at the code.
+comptime _ERROR_NO_MORE_FILES = UInt32(18)
 
 # The two length limits inside WIN32_FIND_DATAW, which are part of the struct
 # and not a choice this file gets to make.
@@ -223,10 +234,11 @@ struct _win32_file_attribute_data(Copyable, Defaultable):
 struct _win32_find_data(Copyable, Defaultable):
     """What FindFirstFileW fills in.
 
-    Only `reserved0` is read, because on a reparse point it holds the reparse
-    tag and that is the one thing GetFileAttributesExW will not tell you. The
-    rest of the struct is here because the call writes all of it and a short
-    buffer is a stack overwrite.
+    Three fields are read and the rest are here because the call writes all of
+    them and a short buffer is a stack overwrite. `reserved0` holds the reparse
+    tag on a reparse point, which is the one thing GetFileAttributesExW will
+    not tell you. `file_name` and `attributes` are what listing a directory is
+    for.
     """
 
     var attributes: UInt32
@@ -259,8 +271,9 @@ struct _win32_find_data(Copyable, Defaultable):
         self.size_low = 0
         self.reserved0 = 0
         self.reserved1 = 0
-        # Not zeroed. FindFirstFileW writes the whole name and nothing here
-        # reads it, so five hundred bytes of stores would buy nothing.
+        # Not zeroed. FindFirstFileW writes the name and a nul after it on
+        # every successful call, and nothing reads the buffer after a failed
+        # one, so five hundred bytes of stores would buy nothing.
         self.file_name = Array[UInt16, _MAX_PATH](uninitialized=True)
         self.alternate_name = Array[UInt16, _ALTERNATE_NAME_CHARS](
             uninitialized=True
@@ -411,3 +424,125 @@ def _filetime_seconds(time: Array[UInt32, 2]) -> Int64:
     # one.
     var ticks = Int64(time[0]) | (Int64(time[1]) << 32)
     return (ticks - _FILETIME_TICKS_TO_UNIX_EPOCH) // _FILETIME_TICKS_PER_SEC
+
+
+# ===-----------------------------------------------------------------------===#
+# listdir
+# ===-----------------------------------------------------------------------===#
+
+
+@fieldwise_init
+struct _dir_entry(Copyable, Movable):
+    """One name out of a directory, with what the enumeration already knew.
+
+    The attributes come free. Windows hands them back with the name, where
+    POSIX gives a name and makes the caller pay for a `stat` to learn anything
+    else, which is why `_rmtree` asks `isfile` and then `isdir` about every
+    entry it walks. Nothing reads `attributes` yet and the answer to that is a
+    change to the public `listdir`, which returns names. Throwing the field
+    away here would make that change start by rewriting this file.
+    """
+
+    var name: String
+    """The entry's name, with no directory in front of it."""
+    var attributes: UInt32
+    """The FILE_ATTRIBUTE bits, as the enumeration reported them."""
+
+
+def _search_pattern(path: String) -> String:
+    """The directory, with the wildcard on the end that Win32 wants.
+
+    FindFirstFileW takes a pattern and not a directory, so listing one means
+    asking it for everything in it. The separator only goes on when there is
+    not one there already, and a bare drive letter counts as one, because
+    `C:*` asks about the current directory on C and `C:\\*` asks about its
+    root, and those are different places.
+    """
+    var pattern = path.copy()
+    if not pattern:
+        # An empty path is the current directory, which is what the POSIX side
+        # would answer for it too, by way of `opendir("")` failing and nobody
+        # calling it that way.
+        return String("*")
+
+    comptime backslash = Byte(ord("\\"))
+    comptime slash = Byte(ord("/"))
+    comptime colon = Byte(ord(":"))
+    var last = pattern.as_bytes()[pattern.byte_length() - 1]
+    if last == backslash or last == slash or last == colon:
+        pattern += "*"
+    else:
+        pattern += "\\*"
+    return pattern^
+
+
+def _entry_name(ref found: _win32_find_data) -> String:
+    """The name out of a filled in WIN32_FIND_DATAW, as UTF-8."""
+    var buffer = Span(
+        unsafe_ptr=found.file_name.unsafe_ptr(), length=Int(_MAX_PATH)
+    )
+    return to_utf8(buffer[: wide_len(buffer)])
+
+
+def _listdir(var path: String) raises -> List[_dir_entry]:
+    """Everything in a directory except the two entries that are not in it.
+
+    `.` and `..` are dropped by name rather than by position. They come first
+    on the filesystems anybody is likely to be using, and the documentation
+    does not promise it, and a network redirector is allowed to leave them out
+    entirely. Comparing the name costs nothing next to the call that produced
+    it.
+
+    The path goes in as it arrived, which means the usual limit of 260
+    characters applies to it. Getting past that needs the `\\\\?\\` prefix,
+    which is a decision about every path in this library rather than about this
+    one call. See the long path issue for that.
+    """
+    _assert_layouts()
+
+    var found = _win32_find_data()
+    var wide = to_utf16(_search_pattern(path).as_bytes())
+    var handle = external_call["FindFirstFileW", Int](
+        wide.unsafe_ptr(), Pointer(to=found)
+    )
+    # Nothing ties `wide` to the call, so say so, or the buffer can be freed
+    # while Windows is still reading the pattern out of it.
+    _ = wide^
+
+    if handle == _INVALID_HANDLE_VALUE:
+        # No check that the path is a directory before this, because the system
+        # has already made it and says so better. A file gets "The directory
+        # name is invalid" and a missing name gets "The system cannot find the
+        # path specified", which are two different problems that one check of
+        # our own would have flattened into one message.
+        raise Error(
+            "unable to list the directory '",
+            path,
+            "': ",
+            error_message(last_error()),
+        )
+
+    var entries = List[_dir_entry]()
+    while True:
+        var name = _entry_name(found)
+        if name != "." and name != "..":
+            entries.append(_dir_entry(name^, found.attributes))
+        if (
+            external_call["FindNextFileW", Int32](handle, Pointer(to=found))
+            == 0
+        ):
+            break
+
+    # Read before the close, because closing a handle sets the thread's error
+    # code and would answer a question about itself rather than about the walk.
+    var code = last_error()
+    _ = external_call["FindClose", Int32](handle)
+    if code != _ERROR_NO_MORE_FILES:
+        raise Error(
+            "unable to finish listing the directory '",
+            path,
+            "': ",
+            error_message(code),
+        )
+
+    return entries^

@@ -30,6 +30,7 @@ from std.reflection import SourceLocation, call_location
 from std._gpu import thread_idx, block_idx
 from std.sys import CompilationTarget, is_gpu, is_apple_gpu
 
+from ._windows import _listdir
 from .path import isdir, split, exists
 from .pathlike import PathLike as stdPathLike
 
@@ -239,6 +240,18 @@ def listdir[PathLike: stdPathLike](path: PathLike) raises -> List[String]:
     Raises:
         If the operation fails.
     """
+    comptime if CompilationTarget.is_windows():
+        # A different call and a different shape, so a separate module rather
+        # than a branch inside `_DirHandle`. `opendir` hands out a handle and
+        # `readdir` reads one entry at a time from it, while `FindFirstFileW`
+        # opens the walk and returns the first entry in the same call, so there
+        # is no point in the middle where the two look alike.
+        var entries = _listdir(path.__fspath__())
+        var names = List[String](capacity=len(entries))
+        for entry in entries:
+            names.append(entry.name.copy())
+        return names^
+
     var dir = _DirHandle(path.__fspath__())
     return dir.list()
 
