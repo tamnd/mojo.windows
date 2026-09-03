@@ -19,11 +19,16 @@ edit	6acb9727246db7b58efcfdfe27ac2338d5c7d015	Config/include/GeneratedVersion.h.
 edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
 edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 edit	59f6f330c21fe83dc6241eb535e4692521d45656	Mojo/lib/Compiler/ObjectCompiler/ObjectCompiler.cpp
+edit	3be1f0d71246e8f079a5695fd1c881cea6d3db1e	Mojo/lib/KGENToLLVM/CABILowering.cpp
+edit	2d04b3c80d840066ae526e282562f8aec44c1f41	Mojo/lib/KGENToLLVM/CABILowering.h
+new	-	Mojo/lib/KGENToLLVM/CABIWin64.cpp
+new	-	Mojo/lib/KGENToLLVM/CABIWin64.h
 edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
 edit	132e3af2f21a2d42a3611c9a4d53ff45fcecaa28	Mojo/stdlib/std/sys/info.mojo
 edit	1e7a5e4e7b567b1f626efe9583ec968e78c3c901	Mojo/stdlib/test/sys/BUILD.bazel
 new	-	Mojo/stdlib/test/sys/test_os_predicates.mojo
 new	-	Mojo/test/kgen/kgen-tool/kgen-emit-shared-windows.mlir
+new	-	Mojo/test/kgen/pop-to-llvm/extern-c-abi-win64.mlir
 new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_link_line.mojo
 edit	72cae2136da1542c64670923232b36ffac55f6a5	Mojo/tools/mojo/Build/mojo-build.cpp
