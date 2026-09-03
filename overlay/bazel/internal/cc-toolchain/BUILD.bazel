@@ -226,7 +226,19 @@ cc_args(
             "@rules_cc//cc/toolchains/args:experimental_replace_legacy_action_config_features",
             "//bazel/internal/cc-toolchain/features:supports_start_end_lib",  # https://github.com/bazelbuild/rules_cc/issues/322
             "//bazel/internal/cc-toolchain/args/interface-libraries",
-        ],
+        ] + select({
+            # Bazel puts every shared library in a _solib_<cpu> tree at the top of
+            # the output tree and relies on an rpath to reach it from wherever the
+            # binary ended up. Windows has no rpath, and the PE loader's search order
+            # starts with the directory the executable is in and never looks three
+            # levels up, so a binary built this way cannot find a single one of its
+            # DLLs. Turning this on makes Bazel put a copy of each of them beside the
+            # binary, which is the one place the loader is guaranteed to look.
+            "@platforms//os:windows": [
+                "//bazel/internal/cc-toolchain/features:copy_dynamic_libraries_to_binary",
+            ],
+            "//conditions:default": [],
+        }),
         known_features = [
             # Only optional features need to be included here
             "//bazel/internal/cc-toolchain/features:asan",

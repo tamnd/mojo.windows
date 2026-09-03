@@ -40,6 +40,17 @@ bazel_dep(name = "buildifier_prebuilt", version = "8.2.1", dev_dependency = True
 archive_override(
     module_name = "rules_cc",
     integrity = "sha256-xPt/jPo70Y+LPhowjcTLhMxwtkZtw7QBwO969n7mWPo=",
+    patch_strip = 1,
+    patches = [
+        # The copy_dynamic_libraries_to_binary feature decides whether to copy a
+        # library next to a binary by comparing the two directories, where Bazel's
+        # own implementation of the same feature compared the packages the two
+        # targets are in. The difference shows up on a cc_import of a shared
+        # library built in the same package, which is what lldb does: the copy is
+        # declared right on top of the real library and collides with the action
+        # that produces it.
+        "//bazel/public-patches:rules_cc_copy_dynamic_libraries_same_package.patch",
+    ],
     strip_prefix = "rules_cc-ad214a9cb17d41e4e03199d61d436974a2261885",
     urls = [
         "https://github.com/bazelbuild/rules_cc/archive/ad214a9cb17d41e4e03199d61d436974a2261885.tar.gz",

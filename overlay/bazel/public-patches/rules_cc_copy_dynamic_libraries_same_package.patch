@@ -1,0 +1,29 @@
+--- a/cc/private/rules_impl/cc_binary_impl.bzl
++++ b/cc/private/rules_impl/cc_binary_impl.bzl
+@@ -177,12 +177,23 @@
+ 
+     return (builder.merge(ctx.runfiles(files = builder_artifacts, transitive_files = depset(builder_transitive_artifacts))), runtime_objects_for_coverage)
+ 
++def _same_package(a, b):
++    return a.package == b.package and a.workspace_name == b.workspace_name
++
+ def _create_dynamic_libraries_copy_actions(ctx, binary, dynamic_libraries_for_runtime):
+     result = []
+     for lib in dynamic_libraries_for_runtime:
+-        # If the binary and the DLL are not in the same directory, copy the DLL
+-        # to the binary's directory.
+-        if lib.dirname != binary.dirname:
++        # If the binary and the DLL come from different packages, copy the DLL to
++        # the binary's directory.
++        #
++        # The question is about the packages and not about the directories the two
++        # files happen to be in. A cc_import of a shared library built in the same
++        # package hands over a symlink from the solib tree, which is in a different
++        # directory but whose copy would land right on top of the real library and
++        # collide with the action that produces it. Bazel's own implementation of
++        # this feature compared package identifiers for that reason and this is a
++        # port of it, so it should compare them too.
++        if not _same_package(lib.owner, ctx.label):
+             copy = ctx.actions.declare_file(lib.basename, sibling = binary)
+             ctx.actions.symlink(output = copy, target_file = lib, progress_message = "Copying Execution Dynamic Library")
+             result.append(copy)
