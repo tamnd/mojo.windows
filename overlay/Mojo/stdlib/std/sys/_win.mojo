@@ -237,6 +237,17 @@ def close_handle(handle: Int):
     _ = external_call["CloseHandle", Int32](handle)
 
 
+def wait_for_single_object(handle: Int, milliseconds: UInt32) -> UInt32:
+    """WaitForSingleObject, in one place for the same reason as the above.
+
+    Two callers, a waitable timer in `time` and a child process in `os.process`,
+    and the same clash waiting to happen: the timer arrives as a pointer and the
+    process as an integer, so whichever of the two reached a module second was
+    the one the compiler blamed. Integer here, and the timer converts.
+    """
+    return external_call["WaitForSingleObject", UInt32](handle, milliseconds)
+
+
 # ===-----------------------------------------------------------------------===#
 # Paths
 # ===-----------------------------------------------------------------------===#

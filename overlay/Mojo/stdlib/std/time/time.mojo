@@ -30,7 +30,7 @@ from std.sys import (
     llvm_intrinsic,
 )
 from std.sys._assembly import inlined_assembly
-from std.sys._win import close_handle
+from std.sys._win import close_handle, wait_for_single_object
 
 # ===-----------------------------------------------------------------------===#
 # Utilities
@@ -569,9 +569,7 @@ def _win_sleep_nanoseconds(nanoseconds: Int):
         Int32(0),
     )
     if armed != 0:
-        _ = external_call["WaitForSingleObject", UInt32](
-            timer.value(), UInt32(_INFINITE)
-        )
+        _ = wait_for_single_object(Int(timer.value()), UInt32(_INFINITE))
     else:
         _win_sleep_milliseconds(nanoseconds)
 
