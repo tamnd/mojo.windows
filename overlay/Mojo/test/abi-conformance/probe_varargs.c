@@ -167,24 +167,27 @@ enum { ABI_TEXT_SIZE = 128 };
 
 static char g_text[ABI_TEXT_SIZE];
 
-// The address as an integer rather than as a pointer. The Mojo side hands it
-// straight back as the first argument to snprintf, and an address in a register
-// is an address in a register whichever type the caller spelled it with, so
-// this keeps the test from depending on how Mojo spells a pointer.
-int64_t abi_text_buffer(void) { return (int64_t)(intptr_t)g_text; }
+// Pointers rather than integer addresses. An address in a register is an
+// address in a register whichever type the caller spelled it with, so handing
+// these out as integers looked like it kept the test from depending on how Mojo
+// spells a pointer. It does not. The standard library already declares snprintf
+// with a pointer first argument, a module gets one declaration per external
+// symbol, and a second call spelling that argument as an integer conflicts with
+// it and fails to lower. See #226.
+char *abi_text_buffer(void) { return g_text; }
 
 int32_t abi_text_size(void) { return ABI_TEXT_SIZE; }
 
 // The format string, handed out the same way, so the Mojo side does not have to
 // produce a null terminated C string to run this test.
-int64_t abi_text_format(void) {
+const char *abi_text_format(void) {
   static const char format[] = "%d:%lld:%.2f:%s";
-  return (int64_t)(intptr_t)format;
+  return format;
 }
 
-int64_t abi_text_argument(void) {
+const char *abi_text_argument(void) {
   static const char argument[] = "tail";
-  return (int64_t)(intptr_t)argument;
+  return argument;
 }
 
 // C makes the same call and compares. Comparing against a literal written here

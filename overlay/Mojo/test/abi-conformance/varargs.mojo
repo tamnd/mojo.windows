@@ -40,7 +40,7 @@ Prints nothing when everything passes and exits zero. Prints one line per
 failure and exits one otherwise.
 """
 
-from std.ffi import c_long, external_call
+from std.ffi import c_char, c_long, external_call
 from std.sys import exit
 
 from abi_probe import (
@@ -50,6 +50,11 @@ from abi_probe import (
     check_returned_int,
     reset,
 )
+
+
+# How the standard library spells a C string, so that the snprintf call below
+# agrees with the declaration std.io already made for the same symbol.
+comptime TextPointer = UnsafePointer[c_char, MutUntrackedOrigin]
 
 
 def int_at(index: Int) -> Int64:
@@ -249,16 +254,23 @@ def test_snprintf() -> Int:
     call into a buffer of its own and compares, rather than this comparing
     against a literal, because how a platform renders a double is not what is
     being tested here.
+
+    The three fixed arguments are spelled the way the standard library spells
+    them, a pointer, an `Int` and a pointer, and they have to be. A module gets
+    one LLVM declaration per external symbol, `std.io` already declares this one
+    for `print`, and a call from here that described the buffer as an integer
+    address is a second signature for the same name and does not lower. See
+    #226.
     """
     external_call["abi_text_clear", NoneType]()
-    var buffer = external_call["abi_text_buffer", Int64]()
+    var buffer = external_call["abi_text_buffer", TextPointer]()
     var size = external_call["abi_text_size", Int32]()
-    var format = external_call["abi_text_format", Int64]()
-    var argument = external_call["abi_text_argument", Int64]()
+    var format = external_call["abi_text_format", TextPointer]()
+    var argument = external_call["abi_text_argument", TextPointer]()
 
     var written = external_call["snprintf", Int32, num_fixed_args=3](
         buffer,
-        Int64(size),
+        Int(size),
         format,
         Int32(42),
         Int64(1234567890123),
