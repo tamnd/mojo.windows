@@ -648,6 +648,135 @@ static std::string getSharedLibraryFileName(const llvm::Triple &triple,
 static constexpr const char *kWindowsCRTLibs[] = {"msvcrt.lib", "msvcrtd.lib",
                                                   "libcmt.lib", "libcmtd.lib"};
 
+/// The application manifest embedded in every executable this driver links for
+/// Windows. Three settings, and each is the answer to a question the program
+/// has no way to answer from the inside.
+///
+/// `activeCodePage` makes the process code page UTF-8. That is not the console
+/// code page, which the standard library sets on the first thing written to a
+/// console. This is what the narrow Win32 and C runtime entry points use, and
+/// what the command line a program is handed is encoded in, so without it a
+/// non ASCII argument arrives mangled according to whatever the machine's
+/// locale is and nothing can be done about it later because the damage is done
+/// before `main` runs. Windows 10 1903 and later reads it and older versions
+/// ignore it and behave as they did.
+///
+/// `longPathAware` lifts the 260 character path limit for the whole process on
+/// a machine where the matching system setting is on. It is not what makes
+/// long paths work here: the standard library puts the `\\?\` prefix on paths
+/// itself, which works everywhere with nothing configured, and that stays the
+/// mechanism. This is for the paths the standard library never sees, meaning
+/// whatever the C runtime or a linked in library does with a path of its own.
+///
+/// `requestedExecutionLevel` at `asInvoker` turns off installer detection,
+/// which is a heuristic the loader applies to an executable with no manifest:
+/// it reads the file name and the version resource, and on finding something
+/// like setup or update or patch in them it asks for elevation. A Mojo program
+/// called `update.exe` should not prompt for administrator, and a manifest
+/// saying so is the documented way to stop it.
+///
+/// There is deliberately no `compatibility` section listing supported OS
+/// GUIDs. That one changes what `GetVersionEx` reports and which compatibility
+/// shims the loader applies, which is a separate decision from the three above
+/// and one nothing here needs an answer to yet.
+static const char kWindowsManifest[] =
+    R"(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage
+        xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings"
+        >UTF-8</activeCodePage>
+      <longPathAware
+        xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings"
+        >true</longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>
+)";
+
+/// Build the bytes of a Windows resource file, the `.res` that `rc.exe`
+/// produces, holding `manifest` as its only resource.
+///
+/// The obvious way to do this is `/manifest:embed` with `/manifestinput:` on
+/// the link line, and it does not work. LLD merges a `/manifestinput:` file
+/// with the one it generates using the XML support in LLVM, an LLVM built
+/// without libxml2 has none, and the fallback is to shell out to `mt.exe`,
+/// which fails with a message about not finding it in PATH. The lld that ships
+/// alongside this compiler is built without libxml2 and it is the one this
+/// driver invokes, so that route is closed. The `lld-link` in the Bazel
+/// toolchain does have libxml2 and does merge, which is worth writing down
+/// only because it means the failure does not reproduce in the place somebody
+/// would look for it first.
+///
+/// A resource file needs neither piece. Converting one to the `.rsrc` section
+/// of an image is in LLVM's object library rather than in its manifest code,
+/// and every COFF linker accepts a `.res` as an ordinary input file. So the
+/// record gets written here. The format is fixed and small: an empty record,
+/// then one record per resource, each a header followed by its data, with
+/// everything padded out to four bytes.
+static std::string buildWindowsManifestResource(StringRef manifest) {
+  // RT_MANIFEST, and the resource id a manifest for the process itself has to
+  // use. A DLL would use 2 instead, which is one of the reasons this only goes
+  // on executables.
+  constexpr uint16_t kResourceTypeManifest = 24;
+  constexpr uint16_t kProcessManifestId = 1;
+  // US English. Nothing reads the language of a manifest, but it is what
+  // rc.exe writes and there is no reason to be the odd one out.
+  constexpr uint16_t kLangEnglishUS = 1033;
+  // Moveable, pure and discardable, again matching rc.exe. These describe how
+  // a 16 bit Windows would have loaded the resource and nothing has read them
+  // in thirty years.
+  constexpr uint16_t kMemoryFlags = 0x1030;
+
+  // A resource file is little endian whatever the machine writing it is, so
+  // the bytes go out one at a time rather than through anything that would
+  // pick up the host's order.
+  std::string res;
+  auto u16 = [&](uint16_t value) {
+    res.push_back(static_cast<char>(value & 0xFF));
+    res.push_back(static_cast<char>((value >> 8) & 0xFF));
+  };
+  auto u32 = [&](uint32_t value) {
+    u16(static_cast<uint16_t>(value & 0xFFFF));
+    u16(static_cast<uint16_t>(value >> 16));
+  };
+  auto header = [&](uint32_t dataSize, uint16_t type, uint16_t id,
+                    uint16_t memoryFlags, uint16_t language) {
+    u32(dataSize);
+    // The size of this header. Fixed at 32 here because both the type and the
+    // name are written as ordinals, which are two words each. Spelling either
+    // as a string would make it variable and would need padding of its own.
+    u32(32);
+    u16(0xFFFF); // An ordinal type follows rather than a name.
+    u16(type);
+    u16(0xFFFF); // And likewise for the name.
+    u16(id);
+    u32(0); // Data version, unused.
+    u16(memoryFlags);
+    u16(language);
+    u32(0); // Version, unused.
+    u32(0); // Characteristics, unused.
+  };
+
+  // Every resource file opens with an empty record. It is how a reader tells
+  // this format from the 16 bit one, which has no such thing at the front.
+  header(0, 0, 0, 0, 0);
+
+  header(manifest.size(), kResourceTypeManifest, kProcessManifestId,
+         kMemoryFlags, kLangEnglishUS);
+  res.append(manifest.begin(), manifest.end());
+  res.append((4 - (manifest.size() % 4)) % 4, '\0');
+  return res;
+}
+
 /// Find the linker called `linkerFilename`, looking in the directory lld ships
 /// in before falling back to PATH. That order is the whole point when the
 /// target is Windows: the linker we want is the one that came with mojo, not
@@ -838,7 +967,31 @@ static int linkOutput(OutputType outputType, const State &state,
   }
   std::string archivePath = archiveFileOr->getPath().string();
 
-  // Both of these have to outlive the linker argument vector, which holds
+  // A Windows executable gets an application manifest, which means writing a
+  // resource file alongside the archive and handing it to the linker as one
+  // more input. Executables only. Everything in the manifest is a property of
+  // the process, and a DLL is loaded into a process whose properties were
+  // settled before it arrived, so a manifest in one is read only for the COM
+  // isolation case this has nothing to do with.
+  //
+  // The TempFile is declared here rather than inside the branch because it
+  // deletes the file when it goes out of scope and the link has not happened
+  // yet at that point.
+  std::optional<TempFile> manifestFile;
+  std::string manifestPath;
+  if (isWindows && outputType == OutputType::executable) {
+    std::string resource = buildWindowsManifestResource(kWindowsManifest);
+    auto manifestFileOr = writeTempFile("mojo_manifest-%%%%%%%.res", resource);
+    if (manifestFileOr.isError()) {
+      return state.reportError(
+          "unable to write a temporary manifest resource for linking: " +
+          Twine(manifestFileOr.getError()));
+    }
+    manifestFile.emplace(std::move(*manifestFileOr));
+    manifestPath = manifestFile->getPath().string();
+  }
+
+  // All three of these have to outlive the linker argument vector, which holds
   // StringRefs into them.
   std::string wholeArchiveArg = "/WHOLEARCHIVE:" + archivePath;
   std::string outputArg = ("/out:" + outputName).str();
@@ -925,6 +1078,14 @@ static int linkOutput(OutputType outputType, const State &state,
     linkerArgs.emplace_back(outputArg);
     linkerArgs.emplace_back("/nologo");
     linkerArgs.emplace_back("/SUBSYSTEM:CONSOLE");
+
+    // The manifest resource written further up, as an ordinary input file.
+    // Nothing has to be said about what it is: the linker reads the extension,
+    // turns the records into the .rsrc section and merges them with whatever
+    // other resources came in. Empty for a shared library, where there is no
+    // manifest to add.
+    if (!manifestPath.empty())
+      linkerArgs.emplace_back(manifestPath);
 
     // Ignore `no object files specified; libraries used` warnings.
     linkerArgs.emplace_back("/IGNORE:4001");

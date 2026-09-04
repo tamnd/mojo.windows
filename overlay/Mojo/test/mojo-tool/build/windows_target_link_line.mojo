@@ -38,12 +38,20 @@
 # in a .pdb and being dropped at the last step. It has to come before /OPT:REF,
 # because /DEBUG changes what the linker does by default about unused sections
 # and the later flag is the one that decides.
-# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo %mojo-build --target-triple x86_64-pc-windows-msvc %s -o %t.exe 2>&1 | FileCheck %s --check-prefix=WIN
+#
+# The .res is the application manifest, written to a temporary file and passed
+# as an ordinary input. The two --implicit-check-not lines are the interesting
+# part of this run: /manifest:embed and /manifestinput: are the obvious way to
+# do this and they need an LLVM built with libxml2, which the lld shipped next
+# to this compiler is not, so a change that reaches for them links fine under
+# Bazel and fails for every user.
+# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo %mojo-build --target-triple x86_64-pc-windows-msvc %s -o %t.exe 2>&1 | FileCheck %s --check-prefix=WIN --implicit-check-not=/manifest:embed --implicit-check-not=/manifestinput:
 
 # WIN: mojo_archive-{{[0-9a-fA-F]+}}.lib
 # WIN-SAME: /out:{{[^ ]*}}.exe
 # WIN-SAME: /nologo
 # WIN-SAME: /SUBSYSTEM:CONSOLE
+# WIN-SAME: mojo_manifest-{{[0-9a-fA-F]+}}.res
 # WIN-SAME: /IGNORE:4001
 # WIN-SAME: msvcrt.lib
 # WIN-SAME: /machine:X64
@@ -77,7 +85,10 @@
 # /WHOLEARCHIVE is the COFF spelling of --whole-archive. The input is a separate
 # file because a shared library may not have a `main` and because the default
 # output name comes from the input file name.
-# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo %mojo-build --emit shared-lib --target-triple x86_64-pc-windows-msvc %S/inputs/windows_shared_lib.mojo 2>&1 | FileCheck %s --check-prefix=DLL
+#
+# No manifest here. Everything in it is a property of the process, and a DLL is
+# loaded into one whose properties were settled before it arrived.
+# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo %mojo-build --emit shared-lib --target-triple x86_64-pc-windows-msvc %S/inputs/windows_shared_lib.mojo 2>&1 | FileCheck %s --check-prefix=DLL --implicit-check-not=mojo_manifest
 
 # DLL: /DLL
 # DLL-SAME: /WHOLEARCHIVE:{{[^ ]*}}mojo_archive-{{[0-9a-fA-F]+}}.lib

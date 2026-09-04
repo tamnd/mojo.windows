@@ -18,7 +18,7 @@ That is a decision rather than a measurement, so here is what it rests on and wh
 
 What we are prepared to stand behind is limited by what actually gets run, and that is one machine on Windows 11. Nothing older has been tested. 1809 is the number because it is the oldest servicing baseline worth naming, because the UCRT is in the box from Windows 10 onwards, and because Server 2019 is the same build so the server question answers itself. Something older may well work. It is not a promise.
 
-Two things degrade rather than fail below that line. Console colour needs virtual terminal processing, which is Windows 10 1511 and later, and the UTF-8 process code page, once #218 lands, needs Windows 10 1903, so Server 2019 gets everything except that one.
+Two things degrade rather than fail below that line. Console colour needs virtual terminal processing, which is Windows 10 1511 and later, and the UTF-8 process code page in the application manifest needs Windows 10 1903, so Server 2019 gets everything except that one.
 
 No Visual C++ redistributable is needed for what the Bazel cross build produces. `hello.exe` imports `KERNEL32.dll` and `KGENCompilerRTShared.dll` and nothing else, with the C runtime linked statically into both. The link line `mojo build` assembles asks for the DLL runtime instead, which does not match and which #231 is about, so treat this paragraph as describing the cross build until that is settled.
 

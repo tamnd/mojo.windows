@@ -231,7 +231,7 @@ The prefix only helps a call that goes to Win32, and not everything did. The C r
 
 What is still limited is the current directory, which the system caps at 260 characters no matter what any program does, so `chdir` into a tree deeper than that fails and there is nothing on this side to fix. Working inside such a tree with short relative names is fine, which is the case that matters.
 
-The manifest is still worth adding later, for the parts of a Mojo program that never go through `to_utf16`, which is anything the C runtime or a linked in library does with a path of its own. It is an addition rather than a replacement.
+The manifest is there as well now, as an addition rather than a replacement, for the parts of a Mojo program that never go through `to_utf16`, which is anything the C runtime or a linked in library does with a path of its own. The section below says how it gets in.
 
 ## The console gets set up on the first thing written to it
 
@@ -245,7 +245,19 @@ Both of these happen in `_prepare_console` in `Mojo/stdlib/std/sys/_win.mojo`, o
 
 The answer to whether escape sequences work is also the answer to whether to colour anything, so `_use_color` in `Mojo/stdlib/std/utils/_ansi.mojo` asks the same function rather than asking `isatty`. On Unix `isatty` is the right question. On Windows it is not: a pipe is a character device and so is the null device, and both of them say yes, so a program whose output a shell redirected to a file would put escape sequences in it. Asking the console for its mode is the question that a file, a pipe and the null device all fail, which is what makes a redirect come out clean.
 
-What is not done here is the application manifest with `activeCodePage` set to UTF-8. That is about the process rather than about the console, meaning the narrow Win32 and C runtime entry points and the command line a program is handed. It is the same manifest the long path section above wants and it needs the same piece of work, which is getting a manifest embedded by the linker in the first place.
+Separate from all of that is the application manifest with `activeCodePage` set to UTF-8, which is about the process rather than about the console, meaning the narrow Win32 and C runtime entry points and the command line a program is handed. That is the same manifest the long path section above wants, and the next section is about it.
+
+## The manifest is a resource we write ourselves
+
+Every executable `mojo build` links for Windows gets an application manifest embedded in it with three settings in it. `activeCodePage` makes the process code page UTF-8, `longPathAware` lifts the 260 character path limit on a machine where the matching system setting is on, and `requestedExecutionLevel` at `asInvoker` turns off installer detection, which is the heuristic that reads a file name and asks for elevation on finding `setup` or `update` or `patch` in it. There is deliberately no `compatibility` section listing supported OS GUIDs, because that changes what `GetVersionEx` reports and which shims the loader applies and is a separate decision nothing needs yet.
+
+Measured on the machine rather than assumed: a probe built without the manifest reports `GetACP` 1252 and receives the argument `café-日本` as the bytes `63 61 66 e9 2d 3f 3f`, which is the accented letter transliterated and both Japanese characters replaced with question marks before the program starts. The same probe with the manifest reports 65001 and receives `63 61 66 c3 a9 2d e6 97 a5 e6 9c ac`, which is the string it was sent. That damage happens in the kernel on the way in, so there is no version of fixing it from inside the program.
+
+The interesting part is how it gets in. The documented way is `/manifest:embed` with `/manifestinput:` on the link line, and it does not work here. LLD merges the file you give it with the one it generates, that merge goes through the XML support in LLVM, and an LLVM built without libxml2 does not have it and falls back to shelling out to `mt.exe`, which is not going to be on a Linux host. The `lld` in the MAX wheel is built without libxml2, and it is the one `mojo build` invokes, so it fails with `unable to find mt.exe in PATH`. The `lld-link` in the Bazel cc toolchain does have libxml2 and does merge, which matters only because it means the failure does not reproduce in the first place anybody would try it.
+
+So `mojo-build.cpp` writes the resource itself. A `.res` file is a flat sequence of records, an empty one at the front and then one header and one blob per resource, everything padded to four bytes, and turning that into the `.rsrc` section of an image is in LLVM's object library rather than in its manifest code. Every COFF linker takes one as an ordinary input file, so the manifest goes to a temporary `.res` next to the temporary archive and onto the link line with no flag at all. Both linkers accept it.
+
+Executables only. Everything in the manifest is a property of the process, and a DLL is loaded into a process whose properties were settled long before it arrived, so a manifest in one is read only for a COM isolation case this has nothing to do with. The lit test in `Mojo/test/mojo-tool/build/windows_target_link_line.mojo` pins both halves, the `.res` on the executable line and its absence on the shared library one, and it also has an `--implicit-check-not` on `/manifest:embed` and `/manifestinput:` so that a future change reaching for the obvious way gets told here rather than in somebody's install.
 
 ## Debug information ends up in a PDB
 
