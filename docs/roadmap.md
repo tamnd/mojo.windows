@@ -52,6 +52,8 @@ The tiers are written down in `test-tiers.txt` and run with `scripts/test-tier.s
 
 Console virtual terminal handling, the UTF-8 manifest, wide character paths, the crash handler, then packaging. A zip on GitHub Releases with checksums and build provenance. PDBs generated and published separately. Release notes that say plainly what does not work.
 
+Debug information for user programs is PDB, and it turned out not to be the choice it had been written up as. Compiling for a Windows target already puts CodeView in the object file, so the whole of the work was asking the linker to keep it rather than letting it drop the sections on the floor. PDB is also the only form dbghelp reads, which is the difference between a crash printing function names and line numbers and a crash printing addresses, so there was nothing to weigh against it. That answers #39, and `docs/building.md` has the detail.
+
 This is the point of the project. Everything after it is refinement.
 
 ## M6, tier 2 and native hosting, four to seven weeks

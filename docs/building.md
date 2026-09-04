@@ -235,6 +235,44 @@ The answer to whether escape sequences work is also the answer to whether to col
 
 What is not done here is the application manifest with `activeCodePage` set to UTF-8. That is about the process rather than about the console, meaning the narrow Win32 and C runtime entry points and the command line a program is handed. It is the same manifest the long path section above wants and it needs the same piece of work, which is getting a manifest embedded by the linker in the first place.
 
+## Debug information ends up in a PDB
+
+Compiling for Windows already produces debug information, and it is CodeView rather than DWARF. The object file for a five line program comes out with about 190 kilobytes of `.debug$S` and `.debug$T` in it, put there by LLVM because the target is `x86_64-pc-windows-msvc`. Nothing had to be added to make that happen and there was never a choice to make about the format.
+
+What was missing was the link. A COFF linker only turns those sections into a `.pdb` if it is asked to, and `mojo build` never asked, so every Windows executable came out with all of it dropped at the last step. `/DEBUG` is the flag, and it now goes on the link line whenever `--debug-level` asks for debug information at all, which is the condition the dSYM generation on macOS already used. The linker names the file after the output, so `prog.exe` gets `prog.pdb` beside it. It has to travel with the executable, because that is the second place the system looks for it after the path recorded at link time.
+
+Order matters on that line. `/DEBUG` changes what lld-link does by default about unused sections, from stripping them to keeping them, so `/OPT:REF` is passed after it and the size win stays.
+
+What this buys is the stack trace printed on a fault. Every Mojo program installs one at startup, through `KGEN_CompilerRT_PrintStackTraceOnFault`, and on Windows that is LLVM's unhandled exception filter and it has always worked. It reads symbols through dbghelp, and dbghelp reads PDBs and nothing else, so without one a crash prints this:
+
+```
+about to fault
+Exception Code: 0xC0000005
+0x00007FF63F2C351A, C:\tmp\probe\test_crash_probe.mojo.test.exe(0x00007FF63F2B0000) + 0x1351A byte(s)
+0x00007FF63F2B110F, C:\tmp\probe\test_crash_probe.mojo.test.exe(0x00007FF63F2B0000) + 0x110F byte(s)
+0x00007FF63F2B25C0, C:\tmp\probe\test_crash_probe.mojo.test.exe(0x00007FF63F2B0000) + 0x25C0 byte(s)
+0x00007FFE05E61363, C:\WINDOWS\System32\KERNEL32.DLL(0x00007FFE05E30000) + 0x31363 byte(s), BaseThreadInitThunk() + 0x13 byte(s)
+0x00007FFE0762C580, C:\WINDOWS\SYSTEM32\ntdll.dll(0x00007FFE075C0000) + 0x6C580 byte(s), RtlUserThreadStart() + 0x20 byte(s)
+```
+
+and with one the same crash prints this:
+
+```
+about to fault
+Exception Code: 0xC0000005
+0x00007FF77845DCDA, C:\tmp\probe\test_crash_probe.mojo.test.exe(0x00007FF778410000) + 0x4DCDA byte(s), memset() + 0xBA byte(s), D:\a\_work\1\s\src\vctools\crt\vcruntime\src\string\amd64\memset.asm, line 196
+0x00007FF77841110F, C:\tmp\probe\test_crash_probe.mojo.test.exe(0x00007FF778410000) + 0x110F byte(s), __mojo_main_prototype() + 0x10F byte(s), /Mojo/stdlib/std/builtin/_startup.mojo, line 185
+0x00007FF778412650, C:\tmp\probe\test_crash_probe.mojo.test.exe(0x00007FF778410000) + 0x2650 byte(s), ?set_commode@__scrt_file_policy@@SAXXZ() + 0x160 byte(s)
+0x00007FFE05E61363, C:\WINDOWS\System32\KERNEL32.DLL(0x00007FFE05E30000) + 0x31363 byte(s), BaseThreadInitThunk() + 0x13 byte(s)
+0x00007FFE0762C580, C:\WINDOWS\SYSTEM32\ntdll.dll(0x00007FFE075C0000) + 0x6C580 byte(s), RtlUserThreadStart() + 0x20 byte(s)
+```
+
+The three frames that were addresses are now names, and two of them carry a source file and a line number. The exit code was right in both, `0xC0000005` reported as `-1073741819`.
+
+Those are two runs of a program whose only content is a `memset` through a null pointer, so they are worth reading as a demonstration of the machinery rather than as a promise about every crash. The frame in the middle of a Mojo program is still named after whatever public symbol precedes it when that program's own frames were inlined away, which is what the third line is.
+
+The binaries this repository's own Bazel build produces are linked by the toolchain rather than by `mojo build` and still have no PDB. Turning it on there is a separate decision, because a debug build's PDB is four megabytes per test executable and there are a couple of hundred of them.
+
 ## Building on Windows, later
 
 This is milestone M6 and it is a separate body of work.

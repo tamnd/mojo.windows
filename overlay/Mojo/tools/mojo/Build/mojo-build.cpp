@@ -961,6 +961,26 @@ static int linkOutput(OutputType outputType, const State &state,
     }
     linkerArgs.emplace_back("/machine:X64");
 
+    // Keep the debug information the compiler already produced. Targeting
+    // Windows, the object file comes out with .debug$S and .debug$T in it,
+    // which is CodeView, and a COFF linker only turns those into a .pdb next
+    // to the output if it is asked to. Not asking is not a smaller build: it
+    // is the same build with the debug information dropped on the floor at
+    // the last step, and there is a lot of it, around 190 kilobytes of
+    // CodeView in the object for a program whose code is five.
+    //
+    // What that costs is everything downstream. A .pdb is the only form
+    // Windows reads. The stack trace printed on a fault comes out of dbghelp,
+    // which has nothing else to look in, so without one a crash reports
+    // addresses and module offsets and no function names at all. Every
+    // Windows debugger is in the same position.
+    //
+    // Gated the same way the dSYM further down is gated, so a build that
+    // asked for no debug information does not quietly grow a second file.
+    // The linker names it after the output, so `foo.exe` gets `foo.pdb`.
+    if (options.debugLevel != CompilationOptions::kNoDebug)
+      linkerArgs.emplace_back("/DEBUG");
+
     // Say so rather than quietly producing a binary with no sanitizer in it.
     // The flags below are clang driver flags and there is no clang driver on
     // this path, and asan on Windows needs its runtime named explicitly

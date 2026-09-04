@@ -31,6 +31,13 @@
 
 # An executable for Windows. Note the archive extension, which is the piece that
 # used to come from `#ifdef _WIN32` and so described the host.
+#
+# `%mojo-build` asks for full debug information, so this is also the line that
+# pins `/DEBUG`. Compiling for Windows puts CodeView in the object file whatever
+# the linker does with it, and that flag is the difference between it ending up
+# in a .pdb and being dropped at the last step. It has to come before /OPT:REF,
+# because /DEBUG changes what the linker does by default about unused sections
+# and the later flag is the one that decides.
 # RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo %mojo-build --target-triple x86_64-pc-windows-msvc %s -o %t.exe 2>&1 | FileCheck %s --check-prefix=WIN
 
 # WIN: mojo_archive-{{[0-9a-fA-F]+}}.lib
@@ -40,13 +47,23 @@
 # WIN-SAME: /IGNORE:4001
 # WIN-SAME: msvcrt.lib
 # WIN-SAME: /machine:X64
+# WIN-SAME: /DEBUG
 # WIN-SAME: /OPT:REF
 # WIN-NOT: --gc-sections
 # WIN-NOT: -dead_strip
 
+# And the same build with no debug information asked for, which is the default
+# and where a .pdb would be a file nobody wanted.
+# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo %mojo-build-no-debug --target-triple x86_64-pc-windows-msvc %s -o %t.exe 2>&1 | FileCheck %s --check-prefix=WINNODEBUG --implicit-check-not=/DEBUG
+
+# WINNODEBUG: /machine:X64
+# WINNODEBUG-SAME: /OPT:REF
+
 # The same source for Linux, so that a change to the Windows arm that quietly
 # leaks into the common path fails here rather than in somebody else's build.
-# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo %mojo-build --target-triple x86_64-unknown-linux-gnu %s -o %t.out 2>&1 | FileCheck %s --check-prefix=LINUX
+# This one asks for debug information too, and /DEBUG is a COFF flag that a C
+# compiler driver would read as the name of a file to link.
+# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo %mojo-build --target-triple x86_64-unknown-linux-gnu %s -o %t.out 2>&1 | FileCheck %s --check-prefix=LINUX --implicit-check-not=/DEBUG
 
 # LINUX: mojo_archive-{{[0-9a-fA-F]+}}.a
 # LINUX-SAME: -o {{[^ ]*}}.out
