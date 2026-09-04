@@ -1,0 +1,70 @@
+load("@module_versions//:config.bzl", "DEFAULT_PYTHON_VERSION", "PYTHON_VERSIONS_DOTTED")
+load("//bazel:api.bzl", "mojo_test", "requirement")
+
+package(default_visibility = ["//visibility:private"])
+
+_NUMPY_TESTS = [
+    "test_numpy.mojo",
+    "test_python_to_mojo.mojo",
+]
+
+[
+    mojo_test(
+        name = src + "{}.test".format("" if version == DEFAULT_PYTHON_VERSION else "_" + version),
+        srcs = [src],
+        copts = [
+            "--debug-level",
+            "full",
+        ],
+        data = [
+            "custom_indexable.py",
+            "custom_operators.py",
+            "my_module.py",
+        ],
+        python_version = version.replace("_", "."),
+        target_compatible_with = select({
+            "//:asan": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        }),
+        deps = [
+            "@mojo//:std",
+        ],
+    )
+    for src in glob(
+        ["**/*.mojo"],
+        exclude = _NUMPY_TESTS,
+    )
+    for version in PYTHON_VERSIONS_DOTTED
+]
+
+[
+    mojo_test(
+        name = src + "{}.test".format("" if version == DEFAULT_PYTHON_VERSION else "_" + version),
+        srcs = [src],
+        copts = [
+            "--debug-level",
+            "full",
+        ],
+        python_version = version.replace("_", "."),
+        target_compatible_with = select({
+            "//:asan": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        }) + select({
+            # The pip lock file has no win_amd64 environment, so the alias
+            # generated for the numpy wheel has no arm that matches a Windows
+            # target, and analysis of anything reaching it stops with a
+            # configurable attribute error rather than a missing file. These two
+            # are the only tests in the standard library suite that ask for a
+            # wheel, so saying so here is enough. docs/building.md has the
+            # reasoning for leaving the lock alone.
+            "//:windows_x86_64": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        }),
+        deps = [
+            "@mojo//:std",
+            requirement("numpy"),
+        ],
+    )
+    for src in _NUMPY_TESTS
+    for version in PYTHON_VERSIONS_DOTTED
+]

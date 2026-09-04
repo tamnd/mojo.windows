@@ -191,6 +191,18 @@ scripts/test-tier.sh 1 --print                # just the patterns, one per line
 
 Tier 0 is the diagnostic and it is the reason the tiers are worth the trouble. Nothing in it asks the kernel for anything, so it passes on Windows for free once the ABI and the calling convention are right. If tier 0 is not green, the problem is not a missing Windows implementation of anything, it is the ABI, and no amount of porting library code will help.
 
+## The pip lock file stays as it is
+
+The build reads a `uv` lock file that covers Linux x86_64, Linux aarch64 and macOS arm64. `rules_pycross` turns it into one alias per wheel with one arm per environment the lock covers, so on a Windows configuration every one of those aliases has three arms and none of them match. Asking Bazel to analyze the whole tree for Windows produces 299 configurable attribute errors, and 209 of them are this.
+
+We are not adding `win_amd64` to the lock, and the reason is that almost none of it is reachable from anything this port builds. Analysis of what we actually ask for, meaning the compiler plus tiers 0, 1 and 2, comes to 370 test targets, of which 357 analyze. Ten of the thirteen that do not are the numpy tests, `test_numpy.mojo` and `test_python_to_mojo.mojo`, once per supported Python version. The other three are the separate question of the prebuilt MAX wheel. Nothing else in the standard library suite reaches a pip wheel at all, and neither does the compiler.
+
+So the cost of adding the environment is a regenerated lock, which `uv` is free to resolve differently for the platforms already in it, and the benefit is ten tests that need numpy on the target to say anything. That is the wrong trade while the milestone is about analysis. The wheels are for the Python side of MAX and for tests, not for building Mojo.
+
+What we do instead is say so in the build files. The two numpy tests are marked incompatible with `//:windows_x86_64`, which is Bazel's own way of expressing "not on this platform" and makes them come back as skipped rather than as an analysis error. They still run everywhere else, which matters, because the Linux and macOS runs are where a numpy regression would actually be caught.
+
+This is worth revisiting when there is a Windows build of MAX to test against, since at that point the Python side is in scope and the lock has to cover it anyway.
+
 ## Building on Windows, later
 
 This is milestone M6 and it is a separate body of work.
