@@ -6,9 +6,21 @@ Native Windows support for the Mojo compiler and standard library, maintained as
 
 ## Status
 
-Early, but past the interesting part. A Mojo program cross compiled from Linux now produces a `hello.exe` that runs on Windows 11 and prints. `//Mojo/examples/windows-hello:hello` is that program and [docs/building.md](docs/building.md) has the command. What is not done is most of the standard library, anything resembling packaging, and building on Windows rather than for it.
+Early, but past the interesting part. A Mojo program cross compiled from Linux produces a `hello.exe` that runs on Windows 11 and prints, and the standard library tiers behind it are green: tier 0 is 232 of 238 on Windows and tier 1 is 74 of 77, with the Win64 ABI conformance suite at thirteen of thirteen. `//Mojo/examples/windows-hello:hello` is that program and [docs/building.md](docs/building.md) has the command. What is not done is packaging, so there are no binaries to download yet, and building on Windows rather than for it.
 
 Track progress on the [milestones](https://github.com/tamnd/mojo.windows/milestones).
+
+## Supported Windows versions
+
+x64 only, Windows 10 version 1809 and later, which is build 17763 and is also Windows Server 2019.
+
+That is a decision rather than a measurement, so here is what it rests on and where it is soft. Nothing in the binaries needs anything close to it: every symbol `hello.exe` and `KGENCompilerRTShared.dll` import from the system was checked against the version it first appeared in, and the newest are `GetLogicalProcessorInformationEx` and the processor group calls in the runtime, which are Windows 7. The PE header asks for 6.0, meaning Vista. So the floor is set by what we are prepared to stand behind, not by what the code can execute on.
+
+What we are prepared to stand behind is limited by what actually gets run, and that is one machine on Windows 11. Nothing older has been tested. 1809 is the number because it is the oldest servicing baseline worth naming, because the UCRT is in the box from Windows 10 onwards, and because Server 2019 is the same build so the server question answers itself. Something older may well work. It is not a promise.
+
+Two things degrade rather than fail below that line. Console colour needs virtual terminal processing, which is Windows 10 1511 and later, and the UTF-8 process code page, once #218 lands, needs Windows 10 1903, so Server 2019 gets everything except that one.
+
+No Visual C++ redistributable is needed for what the Bazel cross build produces. `hello.exe` imports `KERNEL32.dll` and `KGENCompilerRTShared.dll` and nothing else, with the C runtime linked statically into both. The link line `mojo build` assembles asks for the DLL runtime instead, which does not match and which #231 is about, so treat this paragraph as describing the cross build until that is settled.
 
 ## Why this exists
 
