@@ -41,13 +41,21 @@ are expected to have already decided that, the same way `_libc` only makes
 sense on POSIX. The modules above are where the two systems get reconciled.
 """
 
-from std.ffi import c_char, external_call
+from std.ffi import _Global, c_char, external_call
 
 # ===-----------------------------------------------------------------------===#
 # Constants
 # ===-----------------------------------------------------------------------===#
 
 comptime _CP_UTF8 = UInt32(65001)
+
+# GetStdHandle's argument for the two descriptors that can be a console. They
+# are negative numbers passed as an unsigned value, which is what the header
+# does too, and are written out here rather than negated at the call.
+comptime _STD_OUTPUT_HANDLE = UInt32(0xFFFFFFF5)
+comptime _STD_ERROR_HANDLE = UInt32(0xFFFFFFF4)
+
+comptime _ENABLE_VIRTUAL_TERMINAL_PROCESSING = UInt32(0x4)
 
 comptime _FORMAT_MESSAGE_FROM_SYSTEM = UInt32(0x1000)
 comptime _FORMAT_MESSAGE_IGNORE_INSERTS = UInt32(0x200)
@@ -532,3 +540,98 @@ def final_path(handle: Int) raises -> String:
     var resolved = to_utf8(Span(unsafe_ptr=buffer.unsafe_ptr(), length=count))
     _ = buffer^
     return _strip_extended_prefix(resolved^)
+
+
+# ===-----------------------------------------------------------------------===#
+# Console
+# ===-----------------------------------------------------------------------===#
+
+
+def _enable_virtual_terminal(id: UInt32) -> Bool:
+    """Asks one of the standard handles to read escape sequences.
+
+    Returns whether whatever is on the other end understands them once this has
+    run, which is `False` for anything that is not a console and for a console
+    that refuses.
+    """
+    var handle = external_call["GetStdHandle", Int](id)
+    var mode = UInt32(0)
+
+    # Anything that is not a console fails here, and that is the test. Asking
+    # the descriptor whether it is a character device is the other way to ask
+    # and it is the wrong one, because a pipe and the null device both say yes
+    # and neither of them wants escape sequences written into it.
+    if external_call["GetConsoleMode", Int32](handle, Pointer(to=mode)) == 0:
+        return False
+
+    if (mode & _ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0:
+        return True
+
+    return (
+        external_call["SetConsoleMode", Int32](
+            handle, mode | _ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        )
+        != 0
+    )
+
+
+def _prepare_console() -> Bool:
+    """Puts the console into the state the rest of the library writes for.
+
+    Two separate things, done together because they are both about the console
+    and both want doing exactly once.
+
+    The code page is what a console reads bytes in. It defaults to the system's,
+    which in most of the world is not UTF-8, and every string this library
+    hands over is UTF-8, so without this a program that prints anything outside
+    ASCII shows the wrong characters, and which wrong characters depends on
+    where the machine was set up. That is the worst kind of bug to receive a
+    report about.
+
+    Escape sequences are on in Windows Terminal and off in the old console
+    host, so the same coloured output that works in one prints its control
+    codes as text in the other. Turning them on is a request the console
+    either grants or refuses, and the answer is what comes back from here.
+
+    Both of these belong to the console rather than to this process, so they
+    outlive the program the way `chcp` does. Every program that colours its
+    output on Windows makes that trade, and it is the reason this runs when
+    something is first written to a console rather than at startup: a Mojo
+    library loaded into a host that never prints leaves the console alone.
+    """
+    _ = external_call["SetConsoleOutputCP", Int32](_CP_UTF8)
+    _ = external_call["SetConsoleCP", Int32](_CP_UTF8)
+
+    # Standard error gets the same treatment and its answer is dropped, because
+    # the library has one switch for colour and standard output is what that
+    # switch is about. The two are the same console nearly always.
+    _ = _enable_virtual_terminal(_STD_ERROR_HANDLE)
+    return _enable_virtual_terminal(_STD_OUTPUT_HANDLE)
+
+
+comptime _CONSOLE = _Global["WINDOWS_CONSOLE", _prepare_console]
+
+
+def console_takes_escapes() -> Bool:
+    """Sets the console up on the first call, and says what stdout can render.
+
+    Every write to standard output or standard error goes through here, which
+    is what makes the setting up happen at all, and all but the first of them
+    reads back an answer that is already known. Callers that only want to know
+    whether to colour something can ignore that they are also the reason the
+    console is in the right state.
+    """
+    if __is_run_in_comptime_interpreter:
+        # A program being evaluated by the compiler has no console of its own
+        # to set up, and could not do it here anyway: the answer is remembered
+        # in a table the interpreter has no way to reach. Whatever the
+        # compiler's own output is doing is the compiler's business.
+        return False
+
+    try:
+        return _CONSOLE.get_or_create_ptr()[]
+    except:
+        # `_Global` allocates, so the only way here is out of memory, and a
+        # program in that state has a real problem and does not need escape
+        # sequences added to it.
+        return False

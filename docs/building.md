@@ -221,6 +221,20 @@ What is still limited is the current directory, which the system caps at 260 cha
 
 The manifest is still worth adding later, for the parts of a Mojo program that never go through `to_utf16`, which is anything the C runtime or a linked in library does with a path of its own. It is an addition rather than a replacement.
 
+## The console gets set up on the first thing written to it
+
+A console on Windows has two settings that decide whether a program's output arrives the way it was written, and both of them default to no.
+
+The first is the code page, which is what the console reads bytes in. It defaults to whatever the system was set up with, which outside the English speaking world is usually not UTF-8 and on the machine this was written against is 437. Everything the standard library hands over is UTF-8, so without changing it a program that prints anything outside ASCII shows the wrong characters, and which wrong characters depends on where the machine came from. `SetConsoleOutputCP` and `SetConsoleCP` fix that, and both are called.
+
+The second is escape sequences. Windows Terminal has them on already and the old console host does not, so the same coloured output renders in one and prints its own control codes as text in the other. `ENABLE_VIRTUAL_TERMINAL_PROCESSING` through `SetConsoleMode` turns them on, and the console is free to refuse, which is what happens on a version too old for it.
+
+Both of these happen in `_prepare_console` in `Mojo/stdlib/std/sys/_win.mojo`, once, the first time anything is written to standard output or standard error. Not at startup, because a Mojo library loaded into a host process that never prints has no business changing the console it was loaded into, and both settings belong to the console rather than to the process, so they outlive the program the way `chcp` does. Every program that colours its output on Windows makes that same trade.
+
+The answer to whether escape sequences work is also the answer to whether to colour anything, so `_use_color` in `Mojo/stdlib/std/utils/_ansi.mojo` asks the same function rather than asking `isatty`. On Unix `isatty` is the right question. On Windows it is not: a pipe is a character device and so is the null device, and both of them say yes, so a program whose output a shell redirected to a file would put escape sequences in it. Asking the console for its mode is the question that a file, a pipe and the null device all fail, which is what makes a redirect come out clean.
+
+What is not done here is the application manifest with `activeCodePage` set to UTF-8. That is about the process rather than about the console, meaning the narrow Win32 and C runtime entry points and the command line a program is handed. It is the same manifest the long path section above wants and it needs the same piece of work, which is getting a manifest embedded by the linker in the first place.
+
 ## Building on Windows, later
 
 This is milestone M6 and it is a separate body of work.

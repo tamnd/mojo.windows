@@ -39,7 +39,7 @@ from std.ffi import (
     get_errno,
 )
 from std.sys._fd import fd_chdir, fd_isatty, fd_read, fd_write
-from std.sys._win import error_message, last_error
+from std.sys._win import console_takes_escapes, error_message, last_error
 
 from std.collections import Span
 
@@ -74,6 +74,14 @@ struct FileDescriptor(TrivialRegisterPassable, Writer):
         Args:
             bytes: The byte span to write to this file.
         """
+        comptime if CompilationTarget.is_windows():
+            # Writing to a console is what sets the console up, and the two
+            # standard descriptors are the only ones that can be one. See
+            # `console_takes_escapes`. This costs a comparison on the way to a
+            # file and a read of a remembered answer on the way to a screen.
+            if self.value == 1 or self.value == 2:
+                _ = console_takes_escapes()
+
         var written = fd_write(self.value, bytes.unsafe_ptr(), len(bytes))
         assert written == len(bytes), "expected amount of bytes not written"
 
