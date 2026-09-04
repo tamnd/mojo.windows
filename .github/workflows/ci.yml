@@ -115,23 +115,50 @@ jobs:
           GIT_AUTHOR_NAME: ci
           GIT_AUTHOR_EMAIL: ci@localhost
 
-  # Still a placeholder, and the reason is not that the cross build does not work.
-  # It does, on a developer machine, and the ABI conformance suite is cross built
-  # and run green on Windows that way. What is missing is a runner that can do it:
-  # the build needs the whole compiler from source, which is hours on a hosted
-  # runner, plus a Windows sysroot the runner would have to assemble first. So the
-  # honest options are a cache large enough to matter or a self hosted runner, and
-  # a self hosted runner on a public repository is a decision with security
-  # consequences rather than a piece of plumbing.
-  #
-  # Kept here so the job name stays stable in branch protection. See issue #13 for
-  # the gate this is supposed to become and issue #22 for running the result.
-  cross-build:
-    name: Cross build (windows-x86_64)
+  # Analysis for the Windows target, not a build. A real cross build is hours of LLVM
+  # and compiler work plus a 630 MB sysroot, which is not something a hosted runner
+  # can be asked for on every pull request. Analysis is about ten seconds once the
+  # dependencies are cached, needs no sysroot, and catches the failures that actually
+  # happen here: a select() arm with no Windows entry, a toolchain registration that
+  # stopped resolving, a constraint that drifted. Actually running Windows binaries is
+  # a manual step on real hardware, and docs/releasing.md is where that lives.
+  windows-analysis:
+    name: Windows analysis (x86_64)
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 60
     steps:
-      - name: Not wired up yet
-        run: |
-          echo "The cross build works locally. What is missing is a runner that can afford it."
-          echo "See https://github.com/tamnd/mojo.windows/issues/13"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache the upstream checkout
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .upstream
+          key: upstream-${{ hashFiles('upstream.lock') }}
+          restore-keys: upstream-
+
+      # The repository cache is what makes this affordable on a second run. It is the
+      # downloaded archives rather than anything built, so it is keyed on the pin and
+      # nothing else.
+      - name: Cache the Bazel repository cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/bazel-repo
+          key: bazel-repo-${{ hashFiles('upstream.lock') }}
+          restore-keys: bazel-repo-
+
+      - name: Reconstruct the upstream tree with the overlay applied
+        run: ./scripts/sync.sh
+        env:
+          GIT_COMMITTER_NAME: ci
+          GIT_COMMITTER_EMAIL: ci@localhost
+          GIT_AUTHOR_NAME: ci
+          GIT_AUTHOR_EMAIL: ci@localhost
+
+      - name: Analysis for the Windows platform
+        run: ./scripts/check-windows-analysis.sh
+        env:
+          # Read by the script and turned into --repository_cache. Outside the checkout
+          # on purpose, so nothing else in this repository ever walks into it.
+          MOJO_WIN_BAZEL_REPO_CACHE: ${{ runner.temp }}/bazel-repo

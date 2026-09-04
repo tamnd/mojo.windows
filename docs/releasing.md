@@ -40,6 +40,20 @@ Until M5 there are no binaries. A release is the overlay plus the pin, so the ar
 
 The point of tagging before there are binaries is that `upstream.lock` plus `overlay/` at a tag is a complete and reproducible description of a tree. Anybody can check out the tag, run `./scripts/sync.sh` and get exactly what we had.
 
+## The manual gate
+
+CI does not run anything on Windows and is not going to. What a hosted runner can do is analysis, which is the `Windows analysis (x86_64)` lane, and that catches broken `select()` arms and toolchain drift for about ten seconds of compute. It cannot catch a miscompile, because building the compiler from source is hours and running the result needs a Windows machine. So the parts that need real hardware are a checklist somebody works through before publishing, not a check mark on a pull request.
+
+Nothing here is optional for a release that contains binaries. Run all of it on a Windows machine, from a clean checkout of the tag.
+
+1. The ABI conformance suite, `bazel test //Mojo/test/abi-conformance/...`, cross built and run on Windows. Green, no exceptions. This is the one that fails silently if it is skipped, which is the whole reason it exists. `Mojo/test/abi-conformance/README.md` explains what it covers and what it deliberately does not.
+2. Tier 0 and tier 1, `scripts/test-tier.sh 0` and `scripts/test-tier.sh 1`, against the Windows configuration. Compare against the failures recorded for the previous release rather than against zero, and account for every difference in both directions.
+3. The same two tiers on Linux, unchanged from the previous release. A Windows change that regresses Linux is a change that can never go anywhere.
+4. `mojo build` on `Mojo/examples/windows-hello`, and run the result by double clicking it in Explorer rather than from a shell, because that is how the SmartScreen and antivirus behaviour shows up.
+5. The acceptance checklist in issue #29, which is the things only a person sitting in front of the machine can see, console colour among them.
+
+Write the result of 2 and 3 into the release notes as counts. "Tier 0, 232 of 235" is a number the next person can diff against. "Tier 0 green" is not.
+
 ## Cutting one
 
 Tag on `main`, push the tag, and the release workflow drafts the release. Fill in the notes and publish.

@@ -1,0 +1,55 @@
+# Targets in tier 0 and tier 1 that do not survive Bazel analysis for the Windows
+# platform yet.
+#
+# This is the known bad list for scripts/check-windows-analysis.sh. That script runs
+# analysis for the Windows target over the same patterns the tier runs use, collects
+# everything that failed, and compares the result against this file. A target that fails
+# and is not listed here fails the build. A target that is listed here and no longer
+# fails also fails the build, because a list that is allowed to go stale stops being a
+# statement about anything.
+#
+# So this file only ever shrinks, and deleting a line from it is the last step of fixing
+# whatever put it here.
+#
+# Two things put the current entries here, and neither of them is caught by the tier test
+# runs, because those pass --keep_going and an analysis failure in a target nothing else
+# depends on does not stop the tests that do run. That is exactly the gap this list is
+# for.
+#
+# The lit_tests_mojo_deps and lit_tests_lit_site_cfg_py pairs are the aggregate targets
+# lit_tests() generates per package, one staging every Mojo dependency in the package and
+# one writing the lit site config. Any single test in the package that imports
+# //MLRT:Driver/DeviceContext drags @modular_wheel//:AsyncRTMojoBindings_lib into the
+# aggregate, and that alias has arms for linux aarch64, linux x86_64 and macos and no
+# default, so the whole package's aggregate fails to configure for a fourth platform. The
+# individual tests are unaffected, which is why the tier runs never showed it. See #223.
+#
+# test_device_passable and test_pointer are ordinary tier 0 tests that reach the same
+# alias directly rather than through an aggregate. Same cause, same issue.
+
+//Mojo/stdlib/test/benchmark:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/benchmark:lit_tests_mojo_deps
+//Mojo/stdlib/test/builtin:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/builtin:lit_tests_mojo_deps
+//Mojo/stdlib/test/builtin:test_device_passable.mojo.test
+//Mojo/stdlib/test/collections:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/collections:lit_tests_mojo_deps
+//Mojo/stdlib/test/collections/compile_fail:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/collections/compile_fail:lit_tests_mojo_deps
+//Mojo/stdlib/test/collections/string:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/collections/string:lit_tests_mojo_deps
+//Mojo/stdlib/test/collections/string/compile_fail:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/collections/string/compile_fail:lit_tests_mojo_deps
+//Mojo/stdlib/test/format/compile_fail:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/format/compile_fail:lit_tests_mojo_deps
+//Mojo/stdlib/test/memory/pointer:test_pointer.mojo.test
+//Mojo/stdlib/test/memory/pointer/compile_fail:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/memory/pointer/compile_fail:lit_tests_mojo_deps
+//Mojo/stdlib/test/memory/test_fail:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/memory/test_fail:lit_tests_mojo_deps
+//Mojo/stdlib/test/os:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/os:lit_tests_mojo_deps
+//Mojo/stdlib/test/sys:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/sys:lit_tests_mojo_deps
+//Mojo/stdlib/test/sys/compile_fail:lit_tests_lit_site_cfg_py
+//Mojo/stdlib/test/sys/compile_fail:lit_tests_mojo_deps

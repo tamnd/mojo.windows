@@ -102,7 +102,7 @@ Mirroring the result into a public artifact store is not fine, and we will not d
 
 Copying a splat between your own machines is a question for whoever owns the license on those machines, and this project takes no position on it. The script is cheap enough to run per machine that the question does not need answering.
 
-For CI the position is that any lane needing real Windows compilation runs on a self hosted runner that has run the script, or on a GitHub hosted `windows-latest` image, which already carries a licensed Visual Studio install and needs no sysroot at all because it has the real thing. Hosted Linux runners get the empty repository and the analysis only lane. No CI job uploads a sysroot anywhere.
+CI never needs one. The only Windows lane is analysis, which runs on a hosted Linux runner, gets the empty repository and does not care. Anything needing real Windows compilation is a manual step on a machine somebody owns, and `docs/releasing.md` says which steps those are. No CI job uploads a sysroot anywhere, and no CI job downloads one either.
 
 ### Proof it works
 
@@ -295,4 +295,16 @@ Then there is Bazel on Windows itself. Assume `--features=compiler_param_file` i
 
 ## Machines
 
-The Linux build hosts and the Windows test machine are not named in this repository, by policy. Self hosted CI runners are referenced by opaque label only. If you are contributing, build on your own Linux box and test on your own Windows box.
+The Linux build hosts and the Windows test machine are not named in this repository, by policy. There are no self hosted CI runners and there is not going to be one, because attaching a machine you own to a public repository's pull request runs is a security decision rather than a piece of plumbing, and the thing it would buy is a Windows test lane we are content to run by hand. If you are contributing, build on your own Linux box and test on your own Windows box.
+
+## What CI actually checks
+
+Five jobs, all on GitHub hosted runners, all cheap.
+
+`Lint` is shellcheck, actionlint and editorconfig. `House style` is two scans, one for private infrastructure and key material anywhere in the tree and one for punctuation we do not use. `Overlay` runs `scripts/check-overlay.sh`, which is the job that stops the overlay rotting against the pin. `CodeQL` is the usual.
+
+`Windows analysis (x86_64)` is the only one that knows Windows exists. It reconstructs the tree, then runs Bazel analysis for the Windows platform over the compiler and over the tier 0 and tier 1 test patterns, and compares the set of targets that failed against `windows-analysis-allowlist.txt`. Nothing compiles and nothing links, which is what makes it affordable. It needs no sysroot, because the `sysroot-windows` repository rule is written to produce a valid empty repository when `MOJO_WINDOWS_SYSROOT` is unset, and analysis never looks inside it.
+
+That gate is bidirectional on purpose. A target that starts failing fails the job, and a target in the allowlist that starts passing also fails the job, so the list cannot quietly go stale. Run it yourself with `scripts/check-windows-analysis.sh`.
+
+What CI cannot do is run a Windows binary, and it is not worth pretending otherwise. That is a manual checklist against a release, and `docs/releasing.md` has it.
