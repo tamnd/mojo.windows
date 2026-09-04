@@ -25,7 +25,7 @@ This module is where the names change. It sits above `_libc` for the same
 reason `_dl` does: `_libc` is unconditional POSIX and is readable because of
 it, so the conditional layer belongs on top.
 
-Four things are not just a rename.
+Five things are not just a rename.
 
 The first is text mode, and it is the reason to read this file before touching
 anything that opens a file. Windows opens in text mode unless told otherwise,
@@ -65,6 +65,13 @@ calls here have the same hazard and have not been given the same treatment yet,
 because every caller of them today holds a descriptor it opened itself. See
 `suppress_invalid_parameter` in `sys._win`.
 
+The fifth is pipes, where the two systems ask for the same two things in a
+different order. POSIX makes a pipe and then sets close on exec on each end
+with `fcntl`. The CRT's `_pipe` takes that decision as an argument and there is
+no `fcntl` afterwards to change its mind, because Windows keeps the flag on the
+handle rather than on the descriptor. So `fd_pipe` makes both ends private and
+`fd_set_inheritable` is the way to say otherwise, on either system.
+
 Paths go in as UTF-16. A Mojo `String` is UTF-8 and the narrow `_open` takes
 the process code page, which on most installs is not UTF-8, so a path with a
 non-ASCII character in it would be opened under a different name than the one
@@ -74,6 +81,7 @@ asked for. `_wopen` takes the conversion out of the picture.
 from std.ffi import c_int, c_ssize_t, c_uint, external_call
 from std.memory.address_space import AddressSpace
 from std.sys import CompilationTarget
+from std.sys._libc import FcntlCommands, FcntlFDFlags, fcntl
 from std.sys._win import (
     close_handle,
     final_path,
@@ -114,6 +122,20 @@ comptime _O_BINARY = 0x8000
 comptime _O_ACCMODE = 0x0003
 comptime _O_RDONLY = 0x0000
 
+# Whether a child process gets the descriptor. This is the CRT's spelling of
+# `FD_CLOEXEC` and it is the opposite way round: POSIX names the flag that
+# closes the descriptor, the CRT names the one that keeps it. It can only be
+# given when the descriptor is made, which is why `fd_set_inheritable` goes
+# down to the handle instead.
+comptime _O_NOINHERIT = 0x0080
+
+# How much a pipe holds before a write blocks. POSIX picks this and `_pipe`
+# does not, so a number has to be chosen, and 64 KiB is what Linux gives a
+# pipe. The size is worth caring about: a program that writes its whole message
+# before reading any of the reply deadlocks on a buffer smaller than the
+# message, and does so only for the larger messages.
+comptime _PIPE_BYTES = 65536
+
 # ===-----------------------------------------------------------------------===#
 # Win32 constants
 # ===-----------------------------------------------------------------------===#
@@ -132,6 +154,10 @@ comptime _OPEN_EXISTING = UInt32(3)
 # surprising thing about it. The name is about backup programs and the flag is
 # about nothing else.
 comptime _FILE_FLAG_BACKUP_SEMANTICS = UInt32(0x0200_0000)
+
+# The bit SetHandleInformation reads and writes, used both as the mask saying
+# which bit is being changed and as the value it is being changed to.
+comptime _HANDLE_FLAG_INHERIT = UInt32(0x1)
 
 comptime _INVALID_HANDLE_VALUE = -1
 comptime _INVALID_FILE_ATTRIBUTES = UInt32(0xFFFF_FFFF)
@@ -280,6 +306,59 @@ def fd_dup2(source: Int, target: Int) -> Int:
         return Int(external_call["_dup2", c_int](c_int(source), c_int(target)))
     else:
         return Int(external_call["dup2", c_int](c_int(source), c_int(target)))
+
+
+def fd_pipe(fds: MutPointer[c_int, _]) -> Int:
+    """A pipe, read end in `fds[0]` and write end in `fds[1]`, zero on success.
+    """
+    comptime if CompilationTarget.is_windows():
+        # Binary, because a pipe that rewrites line endings on the way through
+        # is not what anybody asked for and there is no file on the other end
+        # to blame it on.
+        #
+        # Not inheritable, which is the same default POSIX has, and unlike
+        # POSIX it has to be decided here rather than afterwards. See
+        # `fd_set_inheritable` for the other answer.
+        return Int(
+            external_call["_pipe", c_int](
+                fds, c_uint(_PIPE_BYTES), c_int(_O_BINARY | _O_NOINHERIT)
+            )
+        )
+    else:
+        return Int(external_call["pipe", c_int](fds))
+
+
+def fd_set_inheritable(fd: Int, inheritable: Bool) -> Int:
+    """Says whether a child process should be given this descriptor.
+
+    This is `FD_CLOEXEC` the other way up. POSIX names the flag that closes the
+    descriptor on exec and Windows names the one that passes it on, so a caller
+    that wants close on exec asks for `inheritable=False` here.
+    """
+    comptime if CompilationTarget.is_windows():
+        # Windows has no per descriptor flags, so the question goes to the
+        # handle underneath. The CRT decides inheritability when the descriptor
+        # is made and offers no way to revisit it, and the handle is the one
+        # thing both layers agree about.
+        var handle = Int(external_call["_get_osfhandle", Int](c_int(fd)))
+        if handle == _INVALID_HANDLE_VALUE:
+            return -1
+        var ok = external_call["SetHandleInformation", Int32](
+            handle,
+            _HANDLE_FLAG_INHERIT,
+            _HANDLE_FLAG_INHERIT if inheritable else UInt32(0),
+        )
+        return 0 if ok != 0 else -1
+    else:
+        var flags = fcntl(c_int(fd), FcntlCommands.F_GETFD, 0)
+        if flags < 0:
+            return -1
+        var wanted: c_int
+        if inheritable:
+            wanted = flags & ~FcntlFDFlags.FD_CLOEXEC
+        else:
+            wanted = flags | FcntlFDFlags.FD_CLOEXEC
+        return Int(fcntl(c_int(fd), FcntlCommands.F_SETFD, wanted))
 
 
 def fd_set_binary_mode(fd: Int) -> Int:

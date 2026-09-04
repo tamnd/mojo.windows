@@ -24,6 +24,12 @@ Windows is spawn rather than fork, and the shapes line up better than they
 might: `posix_spawnp` is already a spawn, so `run` maps onto `CreateProcessW`
 without anything being turned inside out. What does not line up is signals,
 which Windows does not have. See `_windows_status` and `_kill`.
+
+A `Pipe` is the same idea on both, and only the moment when close on exec is
+decided moves. See `fd_pipe` and `fd_set_inheritable` in `sys._fd`. Note that
+nothing here hands an end of one to a child on Windows yet, because
+`_windows_spawn` passes no handles down, so on that side the flag is honest
+rather than load bearing.
 """
 from std.collections import List, Optional
 from std.collections.string import StringSlice
@@ -34,13 +40,10 @@ from std.sys._libc import (
     _get_environ,
     kill,
     SignalCodes,
-    pipe,
-    fcntl,
-    FcntlCommands,
-    FcntlFDFlags,
     close,
     WaitFlags,
 )
+from std.sys._fd import fd_pipe, fd_set_inheritable
 from std.ffi import (
     c_char,
     c_int,
@@ -144,20 +147,22 @@ struct Pipe:
             Error: If the pipe could not be created or configured.
         """
         var pipe_fds = Array[c_int, 2](fill=0)
-        if pipe(pipe_fds.unsafe_ptr()) < 0:
+        if fd_pipe(pipe_fds.unsafe_ptr()) < 0:
             raise Error("Failed to create pipe")
 
-        if in_close_on_exec:
-            if not self._set_close_on_exec(pipe_fds[0]):
-                _ = close(pipe_fds[0])
-                _ = close(pipe_fds[1])
-                raise Error("Failed to configure input pipe close on exec")
+        # Both ends are set either way rather than only the ones being closed,
+        # because on Windows the pipe arrives private and asking for it to be
+        # inherited is a call somebody has to make. On POSIX clearing a flag
+        # that `pipe` left clear costs one call and does nothing.
+        if not self._set_close_on_exec(pipe_fds[0], in_close_on_exec):
+            _ = close(pipe_fds[0])
+            _ = close(pipe_fds[1])
+            raise Error("Failed to configure input pipe close on exec")
 
-        if out_close_on_exec:
-            if not self._set_close_on_exec(pipe_fds[1]):
-                _ = close(pipe_fds[0])
-                _ = close(pipe_fds[1])
-                raise Error("Failed to configure output pipe close on exec")
+        if not self._set_close_on_exec(pipe_fds[1], out_close_on_exec):
+            _ = close(pipe_fds[0])
+            _ = close(pipe_fds[1])
+            raise Error("Failed to configure output pipe close on exec")
 
         self.fd_in = FileDescriptor(Int(pipe_fds[0]))
         self.fd_out = FileDescriptor(Int(pipe_fds[1]))
@@ -169,15 +174,8 @@ struct Pipe:
         self.set_output_only()
 
     @staticmethod
-    def _set_close_on_exec(fd: c_int) -> Bool:
-        return (
-            fcntl(
-                fd,
-                FcntlCommands.F_SETFD,
-                fcntl(fd, FcntlCommands.F_GETFD, 0) | FcntlFDFlags.FD_CLOEXEC,
-            )
-            == 0
-        )
+    def _set_close_on_exec(fd: c_int, on: Bool) -> Bool:
+        return fd_set_inheritable(Int(fd), not on) == 0
 
     @always_inline
     def set_input_only(mut self):
