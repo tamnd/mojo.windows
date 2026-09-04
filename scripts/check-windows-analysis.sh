@@ -69,17 +69,26 @@ fi
 # Bazel names each one in a warning as it gives up on it. The ERROR lines are not usable
 # for this: a target can produce several of them, or none when the failure came from a
 # dependency, so the warnings are the only place the complete set appears once each.
+#
+# Both greps end in || true. Finding nothing is a normal outcome for either of them now
+# that the allowlist is empty and nothing fails, and grep says so with a non zero exit
+# that pipefail and set -e would turn into the script quitting here without a word.
 grep -oE "while analyzing target '[^']+'" "$log" \
   | sed "s/while analyzing target '//; s/'$//" \
-  | sort -u > "$actual"
+  | sort -u > "$actual" || true
 
-grep -vE '^\s*(#|$)' "$ALLOWLIST" | sort -u > "$expected"
+grep -vE '^\s*(#|$)' "$ALLOWLIST" | sort -u > "$expected" || true
 
 new="$(comm -23 "$actual" "$expected")"
 fixed="$(comm -13 "$actual" "$expected")"
 
 if [ -z "$new" ] && [ -z "$fixed" ]; then
-  info "$(wc -l < "$actual" | tr -d ' ') known failures, no change"
+  count="$(wc -l < "$actual" | tr -d ' ')"
+  if [ "$count" -eq 0 ]; then
+    info "every target analyzed for the Windows platform"
+  else
+    info "$count known failures, no change"
+  fi
   exit 0
 fi
 

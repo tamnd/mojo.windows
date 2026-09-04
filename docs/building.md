@@ -203,6 +203,18 @@ What we do instead is say so in the build files. The two numpy tests are marked 
 
 This is worth revisiting when there is a Windows build of MAX to test against, since at that point the Python side is in scope and the lock has to cover it anyway.
 
+## The MAX wheel has no Windows arm either
+
+The `modular_wheel` repository is the other half of the same shape. It is a handful of aliases onto prebuilt shared libraries lifted out of the published MAX wheels, and like the pip aliases each one has an arm per platform the wheel is published for, meaning Linux aarch64, Linux x86_64 and macOS arm64. There is no Windows wheel and there will not be one until MAX itself builds for Windows.
+
+What is different is what a miss costs. A `select` with no matching arm stops analysis rather than skipping, and Bazel does not stop at the target that reached it. One standard library test importing `DeviceContext` pulls `AsyncRTMojoBindings_lib` into its package's `lit_tests_mojo_deps` aggregate, and the aggregate is what fails, so a whole package stops configuring for Windows on account of one test in it. That is where most of the old analysis allowlist came from.
+
+So `bazel/modular_wheel_repository.bzl` gives every one of those aliases a default arm pointing at a `cc_library` marked `target_compatible_with = ["@platforms//:incompatible"]`. Bazel propagates incompatibility to anything that depends on it, so the tests that reach the wheel come back skipped, which is what they are, and the packages around them configure normally.
+
+Sitting behind that was a bug of ours. `mojo_test_environment` walks the Mojo toolchain's implicit deps and stages each one's shared library next to the test, and the Windows toolchain puts two static libraries on that list, the compiler-rt builtins and the maths replacements. A static library has no `dynamic_library`, so the rule died on a `None` with a traceback that named neither the target nor the library. The loop immediately below it, over the deps that arrive through Mojo rather than through the toolchain, had always skipped static libraries. The toolchain loop now does too.
+
+Between the two, `windows-analysis-allowlist.txt` is empty. See #223.
+
 ## Long paths use the prefix, not the manifest
 
 Windows limits a path to 260 characters counting the drive letter and the terminator, and a directory to 248 so that an 8.3 name still fits inside it. That is a limit on the whole string rather than on any one name, so an ordinary tree that is deep enough runs into it with ordinary names in it, and a Bazel output tree is exactly that shape.
@@ -306,5 +318,7 @@ Five jobs, all on GitHub hosted runners, all cheap.
 `Windows analysis (x86_64)` is the only one that knows Windows exists. It reconstructs the tree, then runs Bazel analysis for the Windows platform over the compiler and over the tier 0 and tier 1 test patterns, and compares the set of targets that failed against `windows-analysis-allowlist.txt`. Nothing compiles and nothing links, which is what makes it affordable. It needs no sysroot, because the `sysroot-windows` repository rule is written to produce a valid empty repository when `MOJO_WINDOWS_SYSROOT` is unset, and analysis never looks inside it.
 
 That gate is bidirectional on purpose. A target that starts failing fails the job, and a target in the allowlist that starts passing also fails the job, so the list cannot quietly go stale. Run it yourself with `scripts/check-windows-analysis.sh`.
+
+The allowlist is empty as of #223. Every target in tier 0 and tier 1 analyzes for Windows, and so does the compiler, so anything that shows up in that job now is a regression rather than a gap.
 
 What CI cannot do is run a Windows binary, and it is not worth pretending otherwise. That is a manual checklist against a release, and `docs/releasing.md` has it.

@@ -11,45 +11,12 @@
 # So this file only ever shrinks, and deleting a line from it is the last step of fixing
 # whatever put it here.
 #
-# Two things put the current entries here, and neither of them is caught by the tier test
-# runs, because those pass --keep_going and an analysis failure in a target nothing else
-# depends on does not stop the tests that do run. That is exactly the gap this list is
-# for.
+# It is now empty. Every target in tier 0 and tier 1 analyzes for Windows, and so does
+# the compiler. The file stays because the check needs something to compare against and
+# because an empty list is the strongest form of the statement it makes: any target that
+# stops analyzing from here is a regression somebody introduced, not a gap somebody has
+# not got to yet.
 #
-# The lit_tests_mojo_deps and lit_tests_lit_site_cfg_py pairs are the aggregate targets
-# lit_tests() generates per package, one staging every Mojo dependency in the package and
-# one writing the lit site config. Any single test in the package that imports
-# //MLRT:Driver/DeviceContext drags @modular_wheel//:AsyncRTMojoBindings_lib into the
-# aggregate, and that alias has arms for linux aarch64, linux x86_64 and macos and no
-# default, so the whole package's aggregate fails to configure for a fourth platform. The
-# individual tests are unaffected, which is why the tier runs never showed it. See #223.
-#
-# test_device_passable and test_pointer are ordinary tier 0 tests that reach the same
-# alias directly rather than through an aggregate. Same cause, same issue.
-
-//Mojo/stdlib/test/benchmark:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/benchmark:lit_tests_mojo_deps
-//Mojo/stdlib/test/builtin:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/builtin:lit_tests_mojo_deps
-//Mojo/stdlib/test/builtin:test_device_passable.mojo.test
-//Mojo/stdlib/test/collections:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/collections:lit_tests_mojo_deps
-//Mojo/stdlib/test/collections/compile_fail:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/collections/compile_fail:lit_tests_mojo_deps
-//Mojo/stdlib/test/collections/string:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/collections/string:lit_tests_mojo_deps
-//Mojo/stdlib/test/collections/string/compile_fail:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/collections/string/compile_fail:lit_tests_mojo_deps
-//Mojo/stdlib/test/format/compile_fail:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/format/compile_fail:lit_tests_mojo_deps
-//Mojo/stdlib/test/memory/pointer:test_pointer.mojo.test
-//Mojo/stdlib/test/memory/pointer/compile_fail:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/memory/pointer/compile_fail:lit_tests_mojo_deps
-//Mojo/stdlib/test/memory/test_fail:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/memory/test_fail:lit_tests_mojo_deps
-//Mojo/stdlib/test/os:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/os:lit_tests_mojo_deps
-//Mojo/stdlib/test/sys:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/sys:lit_tests_mojo_deps
-//Mojo/stdlib/test/sys/compile_fail:lit_tests_lit_site_cfg_py
-//Mojo/stdlib/test/sys/compile_fail:lit_tests_mojo_deps
+# If you find yourself about to add a line, read the two entries that used to be here
+# first. Both turned out to be fixable in an afternoon once the actual error was read
+# rather than guessed at. See #223.
