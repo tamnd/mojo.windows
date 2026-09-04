@@ -40,6 +40,7 @@ new	-	Mojo/stdlib/std/os/_windows.mojo
 edit	609ecce75998d4ee31787ca68821b7aecc3183d0	Mojo/stdlib/std/os/env.mojo
 edit	eb6d1b6c8bc68c6fcdb71c22a9579d69b6b81594	Mojo/stdlib/std/os/fstat.mojo
 edit	f493ab2ae57fae2dd21914813628e96efafac604	Mojo/stdlib/std/os/os.mojo
+edit	a30d4ca4b44d6a778bc7ebdc8b4c88dab071770a	Mojo/stdlib/std/os/path/__init__.mojo
 new	-	Mojo/stdlib/std/os/path/_windows.mojo
 edit	70bd16b198a8404bfe3dd793dc39aff60036c933	Mojo/stdlib/std/os/path/path.mojo
 edit	49f0a675f554b8aad2fd008de4d2caf9608b856a	Mojo/stdlib/std/os/process.mojo
@@ -61,7 +62,9 @@ edit	a71ef3fb93683ebfaf255df03cdf9ba116b269b2	Mojo/stdlib/test/os/path/test_base
 edit	fc5a2f30ea3e4c14005d5031bb4c7d25a2ebae9c	Mojo/stdlib/test/os/path/test_dirname.mojo
 edit	001f19406d7ae630466c7b24e065d01fd2a1e215	Mojo/stdlib/test/os/path/test_expanduser.mojo
 edit	3b4c84a07fad1cc4660a5573bf3498d4100c842a	Mojo/stdlib/test/os/path/test_is_absolute.mojo
+new	-	Mojo/stdlib/test/os/path/test_is_reserved.mojo
 edit	1a43c71f1e9c9f5ea636f706b76139c795a85ee9	Mojo/stdlib/test/os/path/test_join.mojo
+new	-	Mojo/stdlib/test/os/path/test_normcase.mojo
 edit	b9808b146b6840aaec6f6d1dcf3880c18f827cc0	Mojo/stdlib/test/os/path/test_realpath.mojo
 edit	3c30abcc2432e5478dd3dee347ef2dd69b3d2b7a	Mojo/stdlib/test/os/path/test_split.mojo
 edit	0dbca73e4d281ba6bf9f44a66213650c71e90aa5	Mojo/stdlib/test/os/path/test_splitroot.mojo

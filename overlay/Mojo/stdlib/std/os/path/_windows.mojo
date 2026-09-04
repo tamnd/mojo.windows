@@ -42,6 +42,15 @@ On top of all that, a forward slash works everywhere a backslash does. Real path
 text on Windows is full of them, out of shells, configuration files and a fair
 part of the Windows API, so nothing here may look for one separator only.
 
+Taking a path apart is not all of it. There are rules about what a name means
+that splitting never has to know, and three of them are here because getting
+them wrong is quiet rather than loud. Case is not part of a name, so two strings
+that differ only in case are one file. `CON`, `NUL`, `COM1` and their relatives
+are devices at every level of every directory, so a program that builds a name
+out of somebody else's text can be talked into opening one. Trailing dots and
+spaces are dropped on the way in, so `file.txt.` reaches `file.txt` while every
+lexical function here still reads the dot as part of the name.
+
 The rules below are CPython's, from `ntpath`, and deliberately so rather than for
 lack of an opinion. Anyone who has written Python on Windows already knows what
 these functions do with a strange path, and a port that is subtly cleverer than
@@ -58,6 +67,8 @@ comptime _BACKSLASH = Byte(ord("\\"))
 comptime _SLASH = Byte(ord("/"))
 comptime _COLON = Byte(ord(":"))
 comptime _QUESTION = Byte(ord("?"))
+comptime _DOT = Byte(ord("."))
+comptime _SPACE = Byte(ord(" "))
 
 # The length of the extended length UNC prefix, counting the separator that
 # closes it, because the scan for the server name has to start after that
@@ -85,8 +96,53 @@ def _upper(byte: Byte) -> Byte:
     return byte
 
 
+def _is_ascii(path: StringSlice) -> Bool:
+    """Whether every byte of `path` is ASCII."""
+    var bytes = path.as_bytes()
+    for i in range(path.byte_length()):
+        if bytes[i] >= 0x80:
+            return False
+    return True
+
+
+def _normcase(path: StringSlice) -> String:
+    """A path in the form two paths have to be in to be compared as text.
+
+    Windows compares path names without regard to case and stores whatever case
+    was written, so `C:\\Users` and `c:\\users` are two spellings of one file.
+    It also takes either separator everywhere, so `C:/Users` is a third.
+    Anything that decides whether two paths are the same by comparing the
+    strings has to put both through here first, and has to keep the originals
+    for anything it shows a person or hands to the file system.
+
+    This is CPython's `ntpath.normcase`: the separators go one way and the whole
+    string goes to lower case. It is not a normalisation in any other sense. It
+    does not touch `.` or `..`, it does not collapse repeated separators, and it
+    does not make a relative path absolute, so two paths that name the same file
+    can still come out of here different.
+
+    Lower case rather than upper is worth a word, because Windows itself folds
+    the other way and the two disagree on a handful of characters. Matching
+    CPython matters more here than matching the kernel, since the comparison
+    this feeds is between two strings a program is holding, not between a string
+    and something on disk.
+    """
+    return path.replace("/", "\\").lower()
+
+
 def _equal_ignoring_case(a: StringSlice, b: StringSlice) -> Bool:
-    """Whether two drives are the same drive, ignoring ASCII case."""
+    """Whether two drives are the same drive, ignoring case.
+
+    This is `_normcase` without the separator rewriting and without allocating,
+    which is worth having separately because a drive is almost always a letter
+    and a colon and the answer is two byte comparisons. The fold falls back to
+    the same one `_normcase` uses as soon as either side has a byte outside
+    ASCII, which for a drive means a share on a server with a non ASCII name.
+    """
+    if not _is_ascii(a) or not _is_ascii(b):
+        # Not a byte for byte comparison, because lowering a character can
+        # change how many bytes it takes and even how many characters it is.
+        return a.lower() == b.lower()
     if a.byte_length() != b.byte_length():
         return False
     var a_bytes = a.as_bytes()
@@ -301,6 +357,143 @@ def _join(path: StringSlice, tail: StringSlice) -> String:
             return drive + sep + rest
 
     return drive + root + rest
+
+
+def _is_reserved_character(byte: Byte) -> Bool:
+    """Whether a byte cannot appear in a Windows file name.
+
+    The control characters are out because the file system says so. The colon
+    is out because it opens an alternate data stream rather than a file, so
+    `name:stream` is not a name with a colon in it. The rest are the wildcards
+    and the redirection characters the command interpreter and the file system
+    both claim.
+    """
+    if byte < 32:
+        return True
+    return (
+        byte == Byte(ord('"'))
+        or byte == Byte(ord("*"))
+        or byte == _COLON
+        or byte == Byte(ord("<"))
+        or byte == Byte(ord(">"))
+        or byte == _QUESTION
+        or byte == Byte(ord("|"))
+        or _is_sep(byte)
+    )
+
+
+def _is_device_stem(stem: StringSlice) -> Bool:
+    """Whether a name with its extension taken off is a DOS device.
+
+    These are not names that happen to be taken. They are devices at every
+    level of every directory, so `C:\\dir\\nul.txt` is the null device and not a
+    file in `dir`, and the open succeeds, which is what makes them worth a
+    function.
+
+    The superscript digits on the end of the port numbers are not a typo.
+    Windows reads `COM\\u00b9` as `COM1`, so a name that looks like ordinary
+    text is a device.
+    """
+    var length = stem.byte_length()
+    var bytes = stem.as_bytes()
+
+    if length == 3:
+        return (
+            _equal_ignoring_case(stem, "CON")
+            or _equal_ignoring_case(stem, "PRN")
+            or _equal_ignoring_case(stem, "AUX")
+            or _equal_ignoring_case(stem, "NUL")
+        )
+    if length == 6:
+        return _equal_ignoring_case(stem, "CONIN$")
+    if length == 7:
+        return _equal_ignoring_case(stem, "CONOUT$")
+
+    # A serial or parallel port, which is three letters and a port number.
+    if length != 4 and length != 5:
+        return False
+    var head = stem[byte=:3]
+    if not _equal_ignoring_case(head, "COM") and not _equal_ignoring_case(
+        head, "LPT"
+    ):
+        return False
+    if length == 4:
+        return bytes[3] >= Byte(ord("1")) and bytes[3] <= Byte(ord("9"))
+    # The superscripts one, two and three, which are two bytes each in UTF-8
+    # and share a first byte.
+    return bytes[3] == 0xC2 and (
+        bytes[4] == 0xB9 or bytes[4] == 0xB2 or bytes[4] == 0xB3
+    )
+
+
+def _is_reserved_name(name: StringSlice) -> Bool:
+    """Whether one component of a path is a name Windows will not give you."""
+    var length = name.byte_length()
+    if length == 0:
+        return False
+    var bytes = name.as_bytes()
+
+    if bytes[length - 1] == _DOT or bytes[length - 1] == _SPACE:
+        # Windows strips trailing dots and spaces from a name on the way in, so
+        # `file.txt.` and `file.txt ` both reach `file.txt` and nothing in the
+        # lexical splitting sees them as anything but part of the name. The two
+        # answers disagree, so the name is reserved rather than quietly
+        # rewritten here, because rewriting it would make `split` and `join`
+        # stop putting a path back together byte for byte.
+        #
+        # `.` and `..` end in a dot and are not this. They are the two names
+        # every directory has.
+        if bytes[length - 1] == _DOT:
+            if length == 1:
+                return False
+            if length == 2 and bytes[0] == _DOT:
+                return False
+        return True
+
+    for i in range(length):
+        if _is_reserved_character(bytes[i]):
+            return True
+
+    # The device check is on the name with its extension taken off, and with
+    # the spaces before the dot taken off as well, so `nul.txt` and `nul .txt`
+    # are both the null device.
+    var stem_end = 0
+    while stem_end < length and bytes[stem_end] != _DOT:
+        stem_end += 1
+    while stem_end > 0 and bytes[stem_end - 1] == _SPACE:
+        stem_end -= 1
+    return _is_device_stem(name[byte=:stem_end])
+
+
+def _is_reserved(path: StringSlice) -> Bool:
+    """Whether Windows reserves any name in `path`.
+
+    A program that builds a file name out of text somebody else supplied can be
+    talked into opening a device instead of a file, and there is nothing to
+    notice afterwards because the open succeeds and reads and writes work. So
+    this is a check to run before creating a file, not a way to explain a
+    failure after one.
+
+    The drive comes off first, because a drive is not a name and the colon in
+    `C:` would otherwise look like the colon that opens a data stream. Every
+    component after that is checked, not just the last one, since a reserved
+    name anywhere in the path is reserved.
+
+    Says nothing about whether the path exists, or about limits the file system
+    imposes rather than the name parser. It is also only the rules as they are
+    written down: a name this says nothing about can still be refused.
+    """
+    var rest = _splitroot(path)[2]
+    var length = rest.byte_length()
+    var bytes = rest.as_bytes()
+
+    var start = 0
+    for i in range(length + 1):
+        if i == length or _is_sep(bytes[i]):
+            if _is_reserved_name(rest[byte=start:i]):
+                return True
+            start = i + 1
+    return False
 
 
 def _expanduser(path: StringSlice) -> String:

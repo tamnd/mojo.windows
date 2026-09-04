@@ -42,7 +42,9 @@ from ..fstat import stat
 from ..os import sep
 from ._windows import _expanduser as _expanduser_windows
 from ._windows import _is_absolute as _is_absolute_windows
+from ._windows import _is_reserved as _is_reserved_windows
 from ._windows import _join as _join_windows
+from ._windows import _normcase as _normcase_windows
 from ._windows import _split as _split_windows
 from ._windows import _splitroot as _splitroot_windows
 
@@ -476,6 +478,107 @@ def is_absolute[PathLike: stdPathLike, //](path: PathLike) -> Bool:
         return _is_absolute_windows(fspath)
 
     return fspath.startswith(sep)
+
+
+# ===----------------------------------------------------------------------=== #
+# normcase
+# ===----------------------------------------------------------------------=== #
+
+
+def normcase[PathLike: stdPathLike, //](path: PathLike) -> String:
+    """Return `path` in the form two paths have to be in to be compared.
+
+    On Unix a path is compared byte for byte and this returns it unchanged.
+
+    On Windows it does not. Case is not part of a name there, and either
+    separator works everywhere, so `C:\\\\Users`, `c:\\\\users` and `C:/Users`
+    are three spellings of one file and comparing them as strings gives the
+    wrong answer three times out of three. This puts the separators one way and
+    the whole string into lower case, so that two of these compare equal.
+
+    Compare the results and keep the originals. What comes back is for deciding
+    whether two paths are the same, not for opening, printing or storing, and
+    it is not a normalisation in any other sense: `.` and `..` stay, repeated
+    separators stay, and a relative path stays relative. Two paths that name the
+    same file can still come out of here different.
+
+    Parameters:
+        PathLike: The type conforming to the os.PathLike trait.
+
+    Args:
+        path: The path to put into comparable form.
+
+    Returns:
+        The path in the form to compare, which on Unix is the path itself.
+
+    Example:
+    ```mojo
+    from std.os.path import normcase
+
+    # On Windows both of these are "c:\\\\users\\\\name".
+    print(normcase("C:/Users/Name") == normcase("c:\\\\users\\\\name"))
+    ```
+    """
+    var fspath = path.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _normcase_windows(fspath)
+
+    return fspath^
+
+
+# ===----------------------------------------------------------------------=== #
+# is_reserved
+# ===----------------------------------------------------------------------=== #
+
+
+def is_reserved[PathLike: stdPathLike, //](path: PathLike) -> Bool:
+    """Return True if the system reserves any name in `path`.
+
+    On Unix nothing is reserved and this is always False. Every byte other than
+    the separator and the terminator is allowed in a name there.
+
+    On Windows a name can be one the system has already taken. `CON`, `PRN`,
+    `AUX`, `NUL`, `COM1` through `COM9` and `LPT1` through `LPT9` are devices at
+    every level of every directory, and an extension does not help, so
+    `C:\\\\dir\\\\nul.txt` is the null device rather than a file in `dir`. A
+    name that ends in a dot or a space is one too, because Windows drops those
+    on the way in and the name that arrives is a different one from the name
+    that was written. So are the wildcards, the redirection characters and the
+    colon, which opens a data stream rather than a file.
+
+    This matters most where a file name is built out of text somebody else
+    supplied, because opening a device succeeds. There is no error to notice and
+    no exception to catch, and the reads and writes afterwards work. Check
+    before creating the file.
+
+    Says nothing about whether the path exists, and it is the rules as written
+    down rather than a promise: a name this accepts can still be refused.
+
+    Parameters:
+        PathLike: The type conforming to the os.PathLike trait.
+
+    Args:
+        path: The path to check.
+
+    Returns:
+        Return `True` if the system reserves any name in the path.
+
+    Example:
+    ```mojo
+    from std.os.path import is_reserved
+
+    # On Windows both of these are True.
+    print(is_reserved("nul.txt"))
+    print(is_reserved("report."))
+    ```
+    """
+    var fspath = path.__fspath__()
+
+    comptime if CompilationTarget.is_windows():
+        return _is_reserved_windows(fspath)
+
+    return False
 
 
 # ===----------------------------------------------------------------------=== #
