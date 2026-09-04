@@ -171,14 +171,28 @@ mojo_copts_toolchain(
         "@platforms//os:macos": [
             "--target-cpu=apple-m1",
         ],
-        # No --target-cpu on purpose. The Linux arms pick x86-64-v3 and neoverse-n1,
-        # which are reasonable when you know what your machines are. Nothing is known
-        # about the machines a Windows build lands on, and x86-64-v3 wants AVX2, so
-        # picking a baseline here would mean shipping a compiler that dies with an
-        # illegal instruction on hardware older than Haswell. Generic x86-64 until
-        # somebody picks a baseline on purpose.
+        # The Linux arms pick x86-64-v3 and neoverse-n1, which are reasonable when you
+        # know what your machines are. Nothing is known about the machines a Windows
+        # build lands on, so this one is picked from the other end: the oldest thing
+        # the release notes are willing to promise.
+        #
+        # x86-64-v3 wants AVX2, which is Haswell in 2013 on the Intel side and
+        # Excavator in 2015 on the AMD side, and the way a binary built for it fails
+        # on anything older is an illegal instruction with no message. x86-64-v2 wants
+        # SSE4.2, POPCNT and CMPXCHG16B, which is Nehalem in 2008 and Bulldozer in
+        # 2011. The claimed minimum is Windows 10 1809, and that runs happily on
+        # Nehalem era hardware, so v3 would quietly contradict the support claim and
+        # v2 does not. See #43 and #65.
+        #
+        # Not generic x86-64 either, because POPCNT and SSE4.2 are exactly what a
+        # compiler's hashing and small string work uses, and a machine that cannot do
+        # v2 is a 2008 machine that is not going to be running a Mojo compiler.
+        #
+        # This has to stay in step with -march in the cc-toolchain, which is where the
+        # same baseline is set for the C++ side.
         "//:windows_x86_64": [
             "-target-triple=x86_64-pc-windows-msvc",
+            "--target-cpu=x86-64-v2",
         ],
     }) + select({
         "//:asan": ["--sanitize=address"],

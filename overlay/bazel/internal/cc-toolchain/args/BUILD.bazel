@@ -173,8 +173,11 @@ cc_args(
         "//:linux_x86_64": ["-march=x86-64-v3"],
         "//:linux_aarch64": ["-mcpu=neoverse-n1"],
         "@platforms//os:macos": [],
-        # Same baseline as linux x86_64, for the same reason.
-        "@platforms//os:windows": ["-march=x86-64-v3"],
+        # Not the same baseline as linux x86_64, for the reason written out next to
+        # --target-cpu in bazel/internal/BUILD.bazel: these binaries are downloaded
+        # by people whose hardware nobody here knows anything about. The two numbers
+        # have to agree, so change them together.
+        "@platforms//os:windows": ["-march=x86-64-v2"],
     }),
 )
 

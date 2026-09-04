@@ -30,6 +30,7 @@ edit	2d04b3c80d840066ae526e282562f8aec44c1f41	Mojo/lib/KGENToLLVM/CABILowering.h
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.cpp
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.h
 edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
+edit	f8b296f497d7449267a8c8b04c1d24df8c7af664	Mojo/lib/ToolCommon/CompilationOptions/CompilationOptions.cpp
 edit	ac3f9993af6adee81672728007a903f5434fd7e3	Mojo/stdlib/std/builtin/_startup.mojo
 edit	ed6c8f8515f5cf564f169629107c7ea6d5f78d74	Mojo/stdlib/std/ffi/__init__.mojo
 edit	e46ab6380739a004ea466d4735a2cf0b5f1da30a	Mojo/stdlib/std/io/file.mojo
@@ -102,6 +103,7 @@ new	-	Mojo/test/abi-conformance/widths.mojo
 new	-	Mojo/test/kgen/kgen-tool/kgen-emit-shared-windows.mlir
 new	-	Mojo/test/kgen/pop-to-llvm/extern-c-abi-win64.mlir
 new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo
+new	-	Mojo/test/mojo-tool/build/windows_target_cpu.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_link_line.mojo
 edit	72cae2136da1542c64670923232b36ffac55f6a5	Mojo/tools/mojo/Build/mojo-build.cpp
 edit	9958fb19c8e9b86a4636b088a591b381170417fe	Mojo/tools/mojo/DriverOptions.td

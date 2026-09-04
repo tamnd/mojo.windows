@@ -54,6 +54,8 @@ Console virtual terminal handling, the UTF-8 manifest, wide character paths, the
 
 Debug information for user programs is PDB, and it turned out not to be the choice it had been written up as. Compiling for a Windows target already puts CodeView in the object file, so the whole of the work was asking the linker to keep it rather than letting it drop the sections on the floor. PDB is also the only form dbghelp reads, which is the difference between a crash printing function names and line numbers and a crash printing addresses, so there was nothing to weigh against it. That answers #39, and `docs/building.md` has the detail.
 
+The CPU baseline for the Windows binaries is `x86-64-v2`, picked from the oldest hardware the support claim covers rather than copied from the Linux arms, which target machines somebody owns. Looking at that turned up a second thing, which is that the default CPU for cross compiled user code was the build machine's CPU, because the cross compilation check compared architectures and Windows x86_64 on Linux x86_64 is the same architecture. That answers #65, and `docs/building.md` has both halves.
+
 This is the point of the project. Everything after it is refinement.
 
 ## M6, tier 2 and native hosting, four to seven weeks
