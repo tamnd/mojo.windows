@@ -56,6 +56,7 @@ edit	96a06ca9fa662f93e00f6bfee2901eab54fe0d1a	Mojo/stdlib/std/testing/assert_abo
 edit	5439bdaef796e82aacd354d0e674d5f4d62bbbb8	Mojo/stdlib/std/time/time.mojo
 edit	784b617c1c9bbb8dab1ba4e02448e1ad648959b2	Mojo/stdlib/test/builtin/test_file.mojo
 edit	cd278e1c94ad17736bedb08b14dad8ac70b2cc26	Mojo/stdlib/test/io/BUILD.bazel
+new	-	Mojo/stdlib/test/io/test_comptime_print.mojo
 new	-	Mojo/stdlib/test/io/test_printf.mojo
 new	-	Mojo/stdlib/test/io/test_standard_streams.mojo
 edit	a71ef3fb93683ebfaf255df03cdf9ba116b269b2	Mojo/stdlib/test/os/path/test_basename.mojo

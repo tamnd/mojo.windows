@@ -203,11 +203,13 @@ def _printf_cpu[
     fmt: StaticString, *types: AnyType
 ](*args: *types, var file: FileDescriptor = stdout):
     if __is_run_in_comptime_interpreter:
-        # The interpreter is one process with one C library in it, and the
-        # descriptor write below is not available to it: it resolves the names
-        # an `external_call` gives by looking them up in itself, and the write
-        # is spelled for the target rather than for the machine doing the
-        # compiling.
+        # The interpreter carries out a short fixed list of calls, picked by
+        # name, and neither the formatting below nor the descriptor write it
+        # feeds is on that list. Neither is this `fprintf`, so a diagnostic
+        # reported while the compiler is evaluating something is a build error
+        # whichever way it goes. This arm is here because it leaves that case
+        # exactly as upstream left it, and because the path behind it reaches
+        # for more names the interpreter would refuse rather than fewer.
         with _fdopen(file) as fd:
             # int fprintf(FILE *restrict stream, const char *restrict fmt, ...);
             # The pack is loaded so the variadic arguments are the values

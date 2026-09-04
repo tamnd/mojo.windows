@@ -272,6 +272,15 @@ def fd_write[
     count: Int,
 ) -> Int:
     comptime if CompilationTarget.is_windows():
+        if __is_run_in_comptime_interpreter:
+            # The POSIX name, on purpose, while compiling for a platform that
+            # does not use it. The interpreter does not look this name up
+            # anywhere: it has an implementation of `write` inside it and picks
+            # it by matching on the name, so this is the only spelling that
+            # works, and it works whichever machine is doing the compiling.
+            # `_write` is a name to look up, and on a Linux host there is
+            # nothing there to find.
+            return Int(external_call["write", c_ssize_t](fd, buffer, count))
         return Int(
             external_call["_write", c_int](
                 c_int(fd), buffer, c_uint(min(count, _MAX_TRANSFER))
