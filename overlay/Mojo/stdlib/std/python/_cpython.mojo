@@ -1766,6 +1766,16 @@ struct CPython(Defaultable, Movable):
         except e:
             abort(t"Failed to load libpython from {python_lib}:\n{e}")
 
+        # `python_lib` is held past the handler above on purpose. A value whose
+        # last use is an argument of a call that raises is destroyed on the way
+        # out of that call, and naming it inside the handler does not count as
+        # a use, so the message ends up reading a slot that something else has
+        # already taken. On Linux the old bytes are usually still there and the
+        # path comes out right by luck. On Windows the allocator scrubs them,
+        # and the path in the message is a run of 0xDF the right length. A use
+        # after the handler is what holds the value across it.
+        _ = python_lib^
+
         if not self.init_error:
             if not self.lib.check_symbol("Py_Initialize"):
                 self.init_error = "compatible Python library not found"
