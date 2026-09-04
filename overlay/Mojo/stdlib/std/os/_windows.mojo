@@ -48,13 +48,21 @@ the same `WIN32_FIND_DATAW` that `_lstat` already needed. See `_listdir`.
 Hard links, symbolic links and real paths are here as well. `link`, `symlink`
 and `realpath` are not in the CRT under any spelling, and all three have a Win32
 equivalent that takes its arguments in the other order or answers a slightly
-different question. See the last section.
+different question. See the middle section.
+
+Making and removing a directory and deleting a file are the odd ones out,
+because the CRT does have all three and using them is still wrong. Its `mkdir`,
+`rmdir` and `unlink` take a narrow string, so a name with anything outside the
+current code page in it does not survive the trip, and a path they are given is
+subject to the classic length limit with no way to say otherwise. Both of those
+go away by calling Win32 with a wide string, which is what everything else in
+this file already does. See the last section.
 """
 
 from std.collections import Array
 from std.ffi import external_call
 from std.sys._libc_errno import errno_from_win32, get_errno, set_errno
-from std.stat.stat import S_IFLNK
+from std.stat.stat import S_IFDIR, S_IFLNK, S_IFREG
 from std.sys import align_of, size_of
 from std.sys._win import (
     close_handle,
@@ -96,6 +104,15 @@ comptime _IO_REPARSE_TAG_MOUNT_POINT = UInt32(0xA000_0003)
 comptime _INVALID_HANDLE_VALUE = -1
 
 comptime _FILE_ATTRIBUTE_DIRECTORY = UInt32(0x10)
+comptime _FILE_ATTRIBUTE_READONLY = UInt32(0x1)
+
+# The permission bits a file gets when Win32 is asked instead of the C runtime.
+# Windows has no such bits and `_wstat64` makes them up out of one attribute and
+# the extension, so there is a right answer here and it is whatever that
+# function does. See `_stat_by_handle`.
+comptime _STAT_READ = 0o444
+comptime _STAT_WRITE = 0o222
+comptime _STAT_EXECUTE = 0o111
 
 # How FindNextFileW says the enumeration is over. It reports that by failing,
 # so every walk of a directory ends in an error that is not one, and the only
@@ -416,11 +433,84 @@ def _stat(var path: String) raises -> _c_stat:
     var err = external_call["_wstat64", Int32](
         wide.unsafe_ptr(), Pointer(to=stat)
     )
-    # Nothing ties `wide` to the call, so say so, or the buffer can be freed
-    # while the CRT is still reading the name out of it.
-    _ = wide^
     if err == -1:
+        # The C runtime parses the name itself before it calls anything, and
+        # that parsing still has the classic length limit in it and does not
+        # know what the extended prefix means. So a path long enough for
+        # `to_utf16` to have prefixed it fails here whether or not the file is
+        # there, and asking Win32 is the only way to tell those two apart.
+        var by_handle = _stat_by_handle(wide, path)
+        # Nothing ties `wide` to either call, so say so, or the buffer can be
+        # freed while one of them is still reading the name out of it.
+        _ = wide^
+        return by_handle^
+
+    _ = wide^
+    return stat^
+
+
+def _is_executable_name(path: StringSlice) -> Bool:
+    """Whether the name ends in one of the extensions Windows will run.
+
+    The C runtime sets the execute bits from the extension because there is
+    nothing else on this platform to set them from, and the list is fixed rather
+    than read out of PATHEXT. Matching it matters here because the two ways of
+    answering `stat` have to agree about the same file.
+    """
+    var lowered = String(path).lower()
+    return (
+        lowered.endswith(".exe")
+        or lowered.endswith(".cmd")
+        or lowered.endswith(".bat")
+        or lowered.endswith(".com")
+    )
+
+
+def _stat_by_handle(wide: List[UInt16], path: StringSlice) raises -> _c_stat:
+    """`stat` without the C runtime, for a name the C runtime cannot see.
+
+    Opening the file is what makes this follow a link the way `stat` is supposed
+    to. GetFileAttributesExW would answer the same questions without a handle
+    and would answer them about the link rather than about what it points at,
+    which is `lstat` and not this.
+
+    Two fields are deliberately the same lie the C runtime tells. `st_nlink` is
+    one, and `st_dev` is zero rather than the drive number, because a caller
+    that wants either of those really wants `os.stat`, which fills both in from
+    a handle of its own and would otherwise get a different answer depending on
+    how long the path was.
+    """
+    _assert_layouts()
+
+    var handle = _open_for_query(wide)
+    if handle == _INVALID_HANDLE_VALUE:
         raise Error("unable to stat '", path, "'")
+
+    var info = _by_handle_file_information()
+    var ok = external_call["GetFileInformationByHandle", Int32](
+        handle, Pointer(to=info)
+    )
+    close_handle(handle)
+    if ok == 0:
+        raise Error("unable to stat '", path, "'")
+
+    var directory = (info.attributes & _FILE_ATTRIBUTE_DIRECTORY) != 0
+    var mode = S_IFDIR | _STAT_EXECUTE if directory else S_IFREG
+    mode |= _STAT_READ
+    if (info.attributes & _FILE_ATTRIBUTE_READONLY) == 0:
+        mode |= _STAT_WRITE
+    if not directory and _is_executable_name(path):
+        mode |= _STAT_EXECUTE
+
+    var stat = _c_stat()
+    stat.st_mode = UInt16(mode)
+    stat.st_nlink = 1
+    stat.st_size = Int64(
+        (UInt64(info.size_high) << 32) | UInt64(info.size_low)
+    )
+    stat.st_atime = _filetime_seconds(info.last_access)
+    stat.st_mtime = _filetime_seconds(info.last_write)
+    stat.st_ctime = _filetime_seconds(info.creation)
     return stat^
 
 
@@ -880,3 +970,78 @@ def _realpath(var path: String) raises -> String:
         close_handle(handle)
         set_errno(errno_from_win32(last_error()))
         raise Error("realpath failed to resolve: ", e)
+
+
+# ===-----------------------------------------------------------------------===#
+# mkdir, rmdir and remove
+# ===-----------------------------------------------------------------------===#
+
+
+def _mkdir(var path: String) raises:
+    """Creates one directory, with no mode.
+
+    POSIX takes a mode and Windows takes a security descriptor, and the two are
+    not the same idea written differently. A mode says what the owner, the group
+    and everybody else may do; an ACL is a list of who may do what, with no
+    group and no notion of everybody else that lines up with the POSIX one. So
+    the mode is dropped rather than approximated, and the new directory
+    inherits its parent's ACL, which is what a directory made by any other
+    Windows program gets.
+    """
+    var wide = to_utf16(path.as_bytes())
+    var ok = external_call["CreateDirectoryW", Int32](
+        wide.unsafe_ptr(),
+        # No security attributes, so the parent's ACL is inherited.
+        OptionalPointer[NoneType, MutUntrackedOrigin](),
+    )
+    var code = last_error()
+    _ = wide^
+
+    if ok == 0:
+        set_errno(errno_from_win32(code))
+        raise Error(
+            "Can not create directory: ", path, " Err: ", error_message(code)
+        )
+
+
+def _rmdir(var path: String) raises:
+    """Removes one directory, which has to be empty and has to be a directory.
+
+    RemoveDirectoryW refuses a file and refuses a directory with anything in it,
+    the same two refusals `rmdir(2)` makes, so nothing here has to check for
+    either. It also refuses a symlink's target: given a link to a directory it
+    removes the link, which is again what POSIX does.
+    """
+    var wide = to_utf16(path.as_bytes())
+    var ok = external_call["RemoveDirectoryW", Int32](wide.unsafe_ptr())
+    var code = last_error()
+    _ = wide^
+
+    if ok == 0:
+        set_errno(errno_from_win32(code))
+        raise Error(
+            "Can not remove directory: ", path, " Err: ", error_message(code)
+        )
+
+
+def _remove(var path: String) raises:
+    """Deletes one file.
+
+    The name goes as soon as this returns and the file goes when the last
+    handle to it closes, which is the part that is not POSIX. On POSIX an open
+    file can be unlinked and the program carries on reading it; here the delete
+    fails outright unless whoever opened it asked to share deletion, and almost
+    nothing does. A test that removes a file it still has open passes on Linux
+    and fails here, and that is the system's answer rather than something this
+    can paper over.
+    """
+    var wide = to_utf16(path.as_bytes())
+    var ok = external_call["DeleteFileW", Int32](wide.unsafe_ptr())
+    var code = last_error()
+    _ = wide^
+
+    if ok == 0:
+        set_errno(errno_from_win32(code))
+        raise Error(
+            "Can not remove file: ", path, " Err: ", error_message(code)
+        )

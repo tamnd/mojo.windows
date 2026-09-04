@@ -203,6 +203,24 @@ What we do instead is say so in the build files. The two numpy tests are marked 
 
 This is worth revisiting when there is a Windows build of MAX to test against, since at that point the Python side is in scope and the lock has to cover it anyway.
 
+## Long paths use the prefix, not the manifest
+
+Windows limits a path to 260 characters counting the drive letter and the terminator, and a directory to 248 so that an 8.3 name still fits inside it. That is a limit on the whole string rather than on any one name, so an ordinary tree that is deep enough runs into it with ordinary names in it, and a Bazel output tree is exactly that shape.
+
+There are two ways out. Prefixing a path with `\\?\` turns off path parsing in the kernel and lifts the limit for that one call. Setting `longPathAware` in the application manifest, on a machine where the matching system setting is on, lifts it for the whole process.
+
+We use the prefix. The manifest needs both halves to be in place and only one of them is ours: the system setting is off by default, it is per machine, and a program cannot do anything about it at the point it matters. A binary that works on the machine it was built on and fails on somebody else's is the worst kind of platform support, and that is what the manifest alone buys. The prefix works the same everywhere with nothing configured.
+
+It goes on in `to_utf16` in `Mojo/stdlib/std/sys/_win.mojo`, which is the one place every path this library hands to Windows passes through. Doing it there rather than at each call site is the whole reason it is reliable, since the call sites that forget are the ones nobody writes a test for.
+
+Three things about it are deliberate and none of them is obvious. The prefix cannot be put on the front of whatever the caller wrote, because turning off the parser means what follows has to be what the parser would have produced, so the path goes through `GetFullPathNameW` first to be made absolute and to have `.` and `..` taken out. It only goes on past 248 characters, not always, because the prefix changes what a path means as well as how long it can be: under it a device name is no longer a device and a trailing dot is no longer stripped. Below the threshold nothing needs the prefix, so nothing gets it, and paths of an ordinary length keep the behaviour this platform gives them. And the length that is measured is the length after the path is resolved, so a relative path is measured with the current directory in front of it, because working inside a deep tree with short names is the ordinary way to be in one and measuring the string as given is the one case that would still fail.
+
+The prefix only helps a call that goes to Win32, and not everything did. The C runtime parses a path itself before it calls anything, and that parsing still has the limit in it and has never heard of the prefix, so `mkdir`, `rmdir` and `remove` now go to `CreateDirectoryW`, `RemoveDirectoryW` and `DeleteFileW` instead of to the narrow C runtime calls they used before. That was worth doing on its own account, since a narrow call also loses any character outside the current code page. `stat` is the one that could not simply be moved, because `_wstat64` invents permission bits and an execute bit from the extension that Win32 has no opinion about, so it stays and gains a fallback: when it fails, the name is looked up again through a handle before the failure is believed. Opening a file needed no change at all, because `_wopen` hands the name to `CreateFileW` as it stands.
+
+What is still limited is the current directory, which the system caps at 260 characters no matter what any program does, so `chdir` into a tree deeper than that fails and there is nothing on this side to fix. Working inside such a tree with short relative names is fine, which is the case that matters.
+
+The manifest is still worth adding later, for the parts of a Mojo program that never go through `to_utf16`, which is anything the C runtime or a linked in library does with a path of its own. It is an addition rather than a replacement.
+
 ## Building on Windows, later
 
 This is milestone M6 and it is a separate body of work.

@@ -18,6 +18,12 @@ into a sentence takes a call. Both of those come up in every module that binds
 anything on Windows, which is why they are here rather than in whichever module
 happened to want them first.
 
+Because every path this library gives to Windows goes through the conversion,
+that is also where a path too long for the classic 260 character limit is put
+into the form that has no limit. Doing it at the one place they all pass through
+is the point: the alternative is remembering to do it at each call, and the
+calls that forget are the ones nobody tests. See `to_utf16` and `_extended`.
+
 Getting a path back out of an open handle is here for the same reason. It is
 the only way to answer either "what does this name really refer to" or "where
 is this descriptor pointing", so `os.path.realpath` and the descriptor based
@@ -72,10 +78,135 @@ comptime _EXTENDED_PREFIX_BYTES = 4
 comptime _EXTENDED_UNC_PREFIX = "\\\\?\\UNC\\"
 comptime _EXTENDED_UNC_PREFIX_BYTES = 8
 
+# Where the classic length limit starts to matter. A path is 260 characters
+# counting the drive and the terminator, and a directory is twelve fewer than
+# that, so that an 8.3 name still fits inside it. The lower of the two is the
+# threshold everywhere here, because a name that can be created should also be
+# creatable one level further down.
+comptime _LONG_PATH_CHARS = 248
+
 
 # ===-----------------------------------------------------------------------===#
 # Text
 # ===-----------------------------------------------------------------------===#
+
+
+def _is_extended(wide: Span[UInt16, _]) -> Bool:
+    """Whether a wide path already opens with a prefix that stops parsing.
+
+    Two of them do. `\\\\?\\` is the one this file puts on, and putting a second
+    one on would make a name out of the first. `\\\\.\\` names a device rather
+    than a file, so `\\\\.\\PhysicalDrive0` is not a path with a length limit
+    and nothing may be added to the front of it.
+    """
+    if len(wide) < 4:
+        return False
+    comptime backslash = UInt16(ord("\\"))
+    if wide[0] != backslash or wide[1] != backslash:
+        return False
+    if wide[2] != UInt16(ord("?")) and wide[2] != UInt16(ord(".")):
+        return False
+    return wide[3] == backslash
+
+
+def _is_relative(wide: Span[UInt16, _]) -> Bool:
+    """Whether the length of `wide` is not yet the length Windows will measure.
+
+    Slashes have already been turned round by the time this is asked, so a
+    separator is a backslash and nothing else. Two of them at the front is a
+    share or a device and is as long as it is going to get, and so is a drive
+    letter with a separator after it. Everything else grows when it is resolved,
+    including `C:name`, which is measured from wherever the process last was on
+    C, and `\\\\name`, which picks up a drive.
+    """
+    comptime backslash = UInt16(ord("\\"))
+    if len(wide) >= 2 and wide[0] == backslash and wide[1] == backslash:
+        return False
+    if len(wide) >= 3 and wide[1] == UInt16(ord(":")) and wide[2] == backslash:
+        return False
+    return True
+
+
+def _current_directory_chars() -> Int:
+    """How long the current directory is, not counting its terminator.
+
+    Asked with no buffer, which is the documented way to be told the size, and
+    the answer then includes the nul. Zero back is a failure and is reported as
+    a length of zero, which makes the caller treat a relative path as though it
+    were already resolved. That is the same answer it would have given before
+    any of this was here.
+    """
+    var count = Int(
+        external_call["GetCurrentDirectoryW", UInt32](
+            UInt32(0), OptionalPointer[UInt16, MutUntrackedOrigin]()
+        )
+    )
+    return count - 1 if count > 0 else 0
+
+
+def _extended(wide: List[UInt16]) -> List[UInt16]:
+    """A path in the form that has no length limit, or nothing.
+
+    The prefix is not something that can be put on the front of whatever the
+    caller wrote. It stops the kernel parsing the path at all, so what follows
+    has to be what the parser would have produced: fully qualified, with no `.`
+    or `..` left in it and no relative piece to resolve. `GetFullPathNameW` is
+    that parser, run on its own, which is why it is here rather than a loop over
+    the components.
+
+    Comes back empty when the path could not be resolved, and the caller then
+    uses what it already had. There is nothing better to do: a path that
+    `GetFullPathNameW` will not look at is one the open after this is not going
+    to like either, and failing here would turn that into a different and less
+    accurate error.
+    """
+    var buffer = List[UInt16](length=_PATH_CHARS, fill=0)
+    var count = Int(
+        external_call["GetFullPathNameW", UInt32](
+            wide.unsafe_ptr(),
+            UInt32(_PATH_CHARS),
+            buffer.unsafe_ptr(),
+            OptionalPointer[NoneType, MutUntrackedOrigin](),
+        )
+    )
+
+    # A count that reaches the end of the buffer is the call saying it did not
+    # fit, and the number is then what it wants including the nul.
+    if count >= _PATH_CHARS:
+        buffer = List[UInt16](length=count, fill=0)
+        count = Int(
+            external_call["GetFullPathNameW", UInt32](
+                wide.unsafe_ptr(),
+                UInt32(count),
+                buffer.unsafe_ptr(),
+                OptionalPointer[NoneType, MutUntrackedOrigin](),
+            )
+        )
+        if count >= len(buffer):
+            return List[UInt16]()
+
+    if count == 0:
+        return List[UInt16]()
+
+    # A share keeps its two leading separators in the shorter form and loses
+    # them in the longer one, because `\\?\UNC\` is already saying what they
+    # said.
+    comptime backslash = UInt16(ord("\\"))
+    var share = count >= 2 and buffer[0] == backslash and buffer[1] == backslash
+    var prefix = _EXTENDED_UNC_PREFIX if share else _EXTENDED_PREFIX
+    var prefix_length = (
+        _EXTENDED_UNC_PREFIX_BYTES if share else _EXTENDED_PREFIX_BYTES
+    )
+    var start = 2 if share else 0
+
+    var extended = List[UInt16](capacity=prefix_length + count - start + 1)
+    # Both prefixes are ASCII, so one byte is one code unit.
+    for byte in prefix.as_bytes():
+        extended.append(UInt16(byte))
+    for index in range(start, count):
+        extended.append(buffer[index])
+    extended.append(0)
+    return extended^
 
 
 def to_utf16(text: Span[Byte, _], *, is_path: Bool = True) -> List[UInt16]:
@@ -83,7 +214,7 @@ def to_utf16(text: Span[Byte, _], *, is_path: Bool = True) -> List[UInt16]:
 
     Pass `is_path=False` for text that is not a path. Almost everything here is
     one, so that is the default, but an environment variable or a message is
-    not and must not have its slashes rewritten.
+    not and must not have its slashes rewritten or its length worried about.
     """
     # Forward slashes become backslashes on the way through. The slashes
     # matter: the Win32 file APIs take either, but LoadLibraryEx with any of
@@ -123,7 +254,35 @@ def to_utf16(text: Span[Byte, _], *, is_path: Bool = True) -> List[UInt16]:
     for index in range(Int(count)):
         if wide[index] == forward:
             wide[index] = backward
-    return wide^
+
+    # A long path goes to Windows in the form that has no length limit. See
+    # `_extended` for what that costs and `docs/building.md` for why it is done
+    # here rather than by asking the process to opt out.
+    #
+    # Only past the limit, and not before it. The prefix changes what a path
+    # means as well as how long it can be: a device name stops being a device,
+    # a trailing dot stops being stripped, and a name a person would call the
+    # same is no longer the same. Below the threshold nothing needs any of that,
+    # so nothing gets it, and the paths every program actually uses keep the
+    # behaviour they have on this platform.
+    if _is_extended(wide):
+        return wide^
+
+    # The limit is on the path Windows ends up with, not on the one it was
+    # handed, so a relative path is measured with the current directory in front
+    # of it and a separator between the two. Without that, a deep tree reached
+    # by a short name from inside it is the one case that still fails, and it is
+    # the ordinary way to work in a deep tree.
+    var length = Int(count)
+    if _is_relative(wide):
+        length += _current_directory_chars() + 1
+
+    if length < _LONG_PATH_CHARS:
+        return wide^
+    var extended = _extended(wide)
+    if len(extended) == 0:
+        return wide^
+    return extended^
 
 
 def to_utf8(wide: Span[UInt16, _]) -> String:

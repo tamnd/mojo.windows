@@ -32,6 +32,9 @@ from std.sys import CompilationTarget, is_gpu, is_apple_gpu
 
 from ._windows import _link as _link_windows
 from ._windows import _listdir
+from ._windows import _mkdir as _mkdir_windows
+from ._windows import _remove as _remove_windows
+from ._windows import _rmdir as _rmdir_windows
 from ._windows import _symlink as _symlink_windows
 from .path import isdir, split, exists
 from .pathlike import PathLike as stdPathLike
@@ -398,6 +401,9 @@ def remove[PathLike: stdPathLike](path: PathLike) raises:
         If the operation fails.
     """
     var fspath = path.__fspath__()
+    comptime if CompilationTarget.is_windows():
+        return _remove_windows(fspath^)
+
     var error = external_call["unlink", Int32](fspath.as_c_string_slice())
 
     if error != 0:
@@ -538,6 +544,11 @@ def mkdir[PathLike: stdPathLike](path: PathLike, mode: Int = 0o777) raises:
     """
 
     var fspath = path.__fspath__()
+    comptime if CompilationTarget.is_windows():
+        # The mode goes nowhere on Windows. See `_mkdir` for why it is dropped
+        # rather than turned into the nearest thing.
+        return _mkdir_windows(fspath^)
+
     var error = external_call["mkdir", Int32](fspath.as_c_string_slice(), mode)
     if error != 0:
         var err = get_errno()
@@ -601,6 +612,9 @@ def rmdir[PathLike: stdPathLike](path: PathLike) raises:
         If the operation fails.
     """
     var fspath = path.__fspath__()
+    comptime if CompilationTarget.is_windows():
+        return _rmdir_windows(fspath^)
+
     var error = external_call["rmdir", Int32](fspath.as_c_string_slice())
     if error != 0:
         var err = get_errno()

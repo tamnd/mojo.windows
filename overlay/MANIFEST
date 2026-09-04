@@ -68,6 +68,7 @@ new	-	Mojo/stdlib/test/os/path/test_normcase.mojo
 edit	b9808b146b6840aaec6f6d1dcf3880c18f827cc0	Mojo/stdlib/test/os/path/test_realpath.mojo
 edit	3c30abcc2432e5478dd3dee347ef2dd69b3d2b7a	Mojo/stdlib/test/os/path/test_split.mojo
 edit	0dbca73e4d281ba6bf9f44a66213650c71e90aa5	Mojo/stdlib/test/os/path/test_splitroot.mojo
+new	-	Mojo/stdlib/test/os/test_long_path.mojo
 edit	33aef7973241b73dfc3a9aa98dd20dd4be9e7c2f	Mojo/stdlib/test/os/test_process.mojo
 edit	95aadc3a106352a3bc1b38de7dc5a6756e545d96	Mojo/stdlib/test/os/test_stat.mojo
 edit	8d230683111ef8dcb245d9ab9d584374e671cec5	Mojo/stdlib/test/pathlib/test_pathlib.mojo
