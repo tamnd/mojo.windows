@@ -151,6 +151,7 @@ delete	a23635bad894c4d460fe37a926e066be71e42a1a	bazel/internal/mojo-filecheck-te
 edit	1e1ce7ca3cb12b9107d22729a15c9d524812caeb	bazel/internal/mojo_filecheck_test.bzl
 new	-	bazel/internal/mojo_filecheck_test.py
 edit	4e7575d34ad20d592013a888c5cd56b37d372a48	bazel/internal/runtool-shim.cpp
+new	-	bazel/internal/windows-math-fixups.c
 new	-	bazel/public-patches/boringssl_gnu_driver_flags.patch
 edit	5c97c045b3cd8aa6e59aa4706665ee70e85ac8ca	bazel/public-patches/crashpad.BUILD
 new	-	bazel/public-patches/curl_gnu_driver_flags.patch

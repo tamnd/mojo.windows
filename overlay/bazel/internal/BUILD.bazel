@@ -216,7 +216,10 @@ mojo_toolchain(
     # dependency would mean adding one to every target that happens to format a 128 bit
     # integer, and finding out which those are by watching links fail.
     implicit_deps = select({
-        "//:windows_x86_64": [":windows_compiler_rt_builtins"],
+        "//:windows_x86_64": [
+            ":windows_compiler_rt_builtins",
+            ":windows_math_fixups",
+        ],
         "//conditions:default": [],
     }),
     lld = "@llvm-project//lld:lld",
@@ -352,6 +355,30 @@ cc_library(
         "-DCOMPILER_RT_HAS_FLOAT16",
         "-fno-builtin",
         "-w",
+    ],
+    linkstatic = True,
+    target_compatible_with = ["@platforms//os:windows"],
+)
+
+# The library above is for symbols a Windows link cannot find. This one is for a symbol it
+# can find and should not use. Nothing below x86-64-v3 has an FMA instruction, so on Windows
+# every fused multiply add on a float32 is a call to fmaf in the Windows C runtime, and that
+# fmaf is not always correctly rounded. windows-math-fixups.c has a correctly rounded one
+# along with the measurements that led to it. See #221.
+#
+# Separate from the compiler-rt library rather than another source in it, because that one
+# is somebody else's code copied out of the tree and this one is ours, and mixing the two
+# would make the next person guess which is which.
+cc_library(
+    name = "windows_math_fixups",
+    srcs = ["windows-math-fixups.c"],
+    # -fno-builtin so the compiler does not recognise the function it is compiling and
+    # replace the body with a call to itself. -ffp-contract=off because the argument for the
+    # method rests on every floating point operation in it rounding exactly once, and
+    # contraction is the compiler deciding otherwise.
+    copts = [
+        "-fno-builtin",
+        "-ffp-contract=off",
     ],
     linkstatic = True,
     target_compatible_with = ["@platforms//os:windows"],
