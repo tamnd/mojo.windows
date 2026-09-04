@@ -394,7 +394,14 @@ def _windows_spawn(path: StringSlice, argv: List[String]) raises -> Int:
     # CreateProcessW is allowed to write to the command line it is handed, and
     # is documented to do so when lpApplicationName is null, so the buffer has
     # to be ours and has to be writable. `to_utf16` already returns a fresh one.
-    var wide = to_utf16(line.as_bytes())
+    #
+    # Not a path, which matters: `to_utf16` turns forward slashes into
+    # backslashes by default, and a command line is full of things that are not
+    # paths. A `/c` handed to the command interpreter would arrive as `\c`,
+    # which it does not recognise as a switch and does not complain about
+    # either, so it would start reading from its input instead of running what
+    # it was given.
+    var wide = to_utf16(line.as_bytes(), is_path=False)
 
     var startup = _startupinfow()
     var info = _process_information()
