@@ -20,7 +20,7 @@ What we are prepared to stand behind is limited by what actually gets run, and t
 
 Two things degrade rather than fail below that line. Console colour needs virtual terminal processing, which is Windows 10 1511 and later, and the UTF-8 process code page in the application manifest needs Windows 10 1903, so Server 2019 gets everything except that one.
 
-No Visual C++ redistributable is needed for what the Bazel cross build produces. `hello.exe` imports `KERNEL32.dll` and `KGENCompilerRTShared.dll` and nothing else, with the C runtime linked statically into both. The link line `mojo build` assembles asks for the DLL runtime instead, which does not match and which #231 is about, so treat this paragraph as describing the cross build until that is settled.
+No Visual C++ redistributable is needed. Both link paths use the static C runtime, so `hello.exe` imports `KERNEL32.dll` and `KGENCompilerRTShared.dll` and nothing else. The DLL runtime would have meant `VCRUNTIME140.dll` on the target machine, which is on most of them and guaranteed on none, and that is not a thing to make somebody install before a downloaded binary will start.
 
 ## Why this exists
 

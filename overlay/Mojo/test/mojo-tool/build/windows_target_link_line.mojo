@@ -53,7 +53,10 @@
 # WIN-SAME: /SUBSYSTEM:CONSOLE
 # WIN-SAME: mojo_manifest-{{[0-9a-fA-F]+}}.res
 # WIN-SAME: /IGNORE:4001
-# WIN-SAME: msvcrt.lib
+# WIN-SAME: libcmt.lib
+# WIN-SAME: libvcruntime.lib
+# WIN-SAME: libucrt.lib
+# WIN-SAME: oldnames.lib
 # WIN-SAME: /machine:X64
 # WIN-SAME: /DEBUG
 # WIN-SAME: /OPT:REF
@@ -78,7 +81,7 @@
 # LINUX-SAME: -Wl,--gc-sections
 # LINUX-SAME: -lm
 # LINUX-NOT: /machine:X64
-# LINUX-NOT: msvcrt.lib
+# LINUX-NOT: libcmt.lib
 
 # A shared library for Windows, with no -o so the default name is exercised too.
 # A DLL has no `lib` prefix, which is the part that is easy to forget, and
@@ -120,11 +123,11 @@
 
 # Naming two CRTs is a link error rather than a preference, so if the install
 # already has an opinion in system_libs then this file must not add a second.
-# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo MODULAR_MOJO_MAX_SYSTEM_LIBS=libcmt.lib %mojo-build --target-triple x86_64-pc-windows-msvc %s -o %t.exe 2>&1 | FileCheck %s --check-prefix=CRT
+# The opinion here is the DLL runtime, which is the one we do not pick, so a
+# regression that ignores system_libs shows up as the static set coming back.
+# RUN: env MODULAR_MOJO_MAX_LINKER_DRIVER=/bin/echo MODULAR_MOJO_MAX_SYSTEM_LIBS=msvcrt.lib %mojo-build --target-triple x86_64-pc-windows-msvc %s -o %t.exe 2>&1 | FileCheck %s --check-prefix=CRT --implicit-check-not=libcmt.lib --implicit-check-not=libvcruntime.lib --implicit-check-not=libucrt.lib --implicit-check-not=oldnames.lib
 
-# CRT-NOT: msvcrt.lib
-# CRT: libcmt.lib
-# CRT-NOT: msvcrt.lib
+# CRT: msvcrt.lib
 
 # Only x86_64 COFF works today, and saying so here beats a pile of relocation
 # errors at the end of a long link.

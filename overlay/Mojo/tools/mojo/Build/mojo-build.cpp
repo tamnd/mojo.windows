@@ -641,10 +641,15 @@ static std::string getSharedLibraryFileName(const llvm::Triple &triple,
   return ("lib" + stem + ".so").str();
 }
 
-/// The four CRT import libraries an MSVC style link can name. If the install
-/// already names one of these in `system_libs` then it has an opinion, and
-/// this file must not add a second one: naming two of them is a link error
-/// rather than a preference.
+/// The four CRT startup libraries an MSVC style link can name, static or
+/// dynamic, release or debug. If the install already names one of these in
+/// `system_libs` then it has an opinion, and this file must not add a second
+/// one: naming two of them is a link error rather than a preference.
+///
+/// Only these four and not libucrt, libvcruntime and their DLL spellings.
+/// These are the ones that pick a flavour, and the others follow from the
+/// choice. An install naming libucrt on its own is supplementing rather than
+/// choosing, and should not silently lose the rest of the runtime.
 static constexpr const char *kWindowsCRTLibs[] = {"msvcrt.lib", "msvcrtd.lib",
                                                   "libcmt.lib", "libcmtd.lib"};
 
@@ -1090,7 +1095,7 @@ static int linkOutput(OutputType outputType, const State &state,
     // Ignore `no object files specified; libraries used` warnings.
     linkerArgs.emplace_back("/IGNORE:4001");
 
-    // Add the right VCRT to match the one used when building KGENCompilerRT.
+    // The static release CRT, to match the one KGENCompilerRT was built with.
     // This used to be `#if _DEBUG`, which asks how the compiler itself was
     // built and gets it wrong in the direction that hurts. A debug build of
     // mojo cross compiling to Windows asked for msvcrtd.lib, which is not
@@ -1100,16 +1105,49 @@ static int linkOutput(OutputType outputType, const State &state,
     // guessed at: a Linux -c dbg build of this compiler does define _DEBUG,
     // so that branch was live and wrong rather than dead and wrong.
     //
-    // Release CRT by default, and `system_libs` in modular.cfg is where to
-    // say otherwise, which is where an install would already be naming any
-    // other library it happens to need.
+    // Then it was a single msvcrt.lib, which was wrong twice over. That is
+    // the import library for the DLL runtime, so it disagreed with the
+    // runtime it claimed to match, and it is only the VC startup half, so a
+    // link naming it and nothing else fails on __acrt_iob_func and every
+    // other UCRT symbol the moment anything calls printf.
+    //
+    // Four libraries, because on this sysroot none of them pulls the others
+    // in: libcmt is the startup and the old C library, libvcruntime is where
+    // __C_specific_handler and the rest of the compiler support lives, and
+    // libucrt is the C library proper. Naming only the first two leaves the
+    // third undefined and naming only the first and third leaves the second.
+    //
+    // oldnames is the fourth and is the one that is easy to leave out. It is
+    // the aliases from the POSIX spellings to the underscore ones, `dup` to
+    // `_dup` and `fdopen` to `_fdopen`, and the standard library calls those
+    // by their POSIX names, so without it the link fails in std.io rather
+    // than anywhere that looks like a runtime problem. clang names it for
+    // every MSVC target and so does cl.exe, which is why the Bazel path never
+    // noticed it was needed.
+    //
+    // Static is the choice rather than the default. It is what the Bazel
+    // cross build already produces, it is what is inside
+    // KGENCompilerRTShared.dll, and it means the executable imports
+    // KERNEL32.dll and nothing else, so there is no Visual C++
+    // redistributable to install before a downloaded binary will start. The
+    // DLL runtime would need VCRUNTIME140.dll on the target machine, which is
+    // on most of them and guaranteed on none.
+    //
+    // `system_libs` in modular.cfg is where to say otherwise, which is where
+    // an install would already be naming any other library it happens to
+    // need. Naming any CRT there suppresses all four of these, because an
+    // install that has picked a runtime has picked the whole set.
     const bool haveCRT = llvm::any_of(systemLibs, [](StringRef lib) {
       return llvm::any_of(kWindowsCRTLibs, [&](const char *crt) {
         return lib.equals_insensitive(crt);
       });
     });
-    if (!haveCRT)
-      linkerArgs.emplace_back("msvcrt.lib");
+    if (!haveCRT) {
+      linkerArgs.emplace_back("libcmt.lib");
+      linkerArgs.emplace_back("libvcruntime.lib");
+      linkerArgs.emplace_back("libucrt.lib");
+      linkerArgs.emplace_back("oldnames.lib");
+    }
 
     // Mojo only supports X86_64 COFF right now. That used to be a comment
     // above a hardcoded /machine:X64, and now that the target decides rather

@@ -126,6 +126,22 @@ One version constraint fell out of that and it is worth knowing before you hit i
 
 Two things to check when wiring this up. `-Wl,--gc-sections` currently sits outside the `_WIN32` split in `mojo-build.cpp`, so on the Windows path it gets handed to a linker that does not understand it. The COFF equivalent is `/OPT:REF`. And the shared library path has no `/WHOLEARCHIVE:`, whose absence silently drops symbols out of static archives. Both are one line fixes once found, and both are good evidence that this code has never actually been run.
 
+### Which C runtime, and why static
+
+The static release one, `libcmt.lib` with `libvcruntime.lib`, `libucrt.lib` and `oldnames.lib`, on both link paths.
+
+The Bazel cross build gets there by not doing anything: `-fms-runtime-lib` defaults to the static release runtime and nothing in the toolchain changes it. Ask clang what it passes and it says `-defaultlib:libcmt -defaultlib:oldnames`. `mojo build` has to name the libraries itself, because a Mojo object file carries none of the `/DEFAULTLIB` directives a `cl.exe` object would, and for a while it named `msvcrt.lib`, which was wrong twice. That is the import library for the DLL runtime, so it disagreed with the runtime it said in a comment it was matching, and it is only the VC startup half, so a link naming it alone fails on `__acrt_iob_func` and every other UCRT symbol as soon as anything calls `printf`. Measured, not assumed: linking a `printf` hello world against `msvcrt.lib` and nothing else fails exactly that way.
+
+All four libraries are needed because on this sysroot none of them pulls the others in. `libcmt` and `libucrt` without `libvcruntime` leaves `__C_specific_handler` undefined, which is the SEH personality routine, so it is not an obscure corner: any function with an unwind table wants it. And `oldnames` is the aliases from the POSIX spellings to the underscore ones, which the standard library needs because `std.io` calls `dup` and `fdopen` rather than `_dup` and `_fdopen`. Leaving it out fails in the standard library rather than anywhere that looks like a runtime problem, which is what makes it the easy one to miss.
+
+The reason to pick static over dynamic is what a stranger has to install. The same hello world linked against the static set imports `KERNEL32.dll` and nothing else and comes to 120 kilobytes. Linked against the DLL set it is 9.5 kilobytes and imports `VCRUNTIME140.dll` and five `api-ms-win-crt-*` forwarders. The forwarders are in the box from Windows 10 onwards so those are free, but `VCRUNTIME140.dll` comes from the Visual C++ redistributable, which is on most machines and guaranteed on none. A hundred kilobytes per binary is a much better trade than a download and a reboot before anything runs, and it means the release zip is a zip rather than a zip and an installer.
+
+It is also what `KGENCompilerRTShared.dll` already has inside it, so this is the choice that makes the two halves agree.
+
+The thing static does not fix is handing a `FILE*` or a `malloc` pointer from the executable to the shared library, because two statically linked runtimes are two separate runtimes with two heaps and two stdio tables. That is #174 and it needs both sides on one dynamic runtime, which is a bigger change than this and not one to make before there is a reason.
+
+Settling this is also what got `mojo build` linking end to end for the first time. Until now every Windows binary in this project came out of Bazel and the `mojo build` link line was only ever checked as a list of arguments. Given the four libraries above, the bundled `lld`, the Windows `KGENCompilerRTShared.if.lib` and the sysroot library paths, `mojo build --target-triple x86_64-pc-windows-msvc hello.mojo -o hello.exe` produces a 107 kilobyte executable that imports `KERNEL32.dll` and `KGENCompilerRTShared.dll`, and it prints when you run it on Windows. Nothing about that is wired up for a user yet, which is #27, but the path itself works.
+
 ### Where a Win32 import library gets named
 
 Ten of them are named once, in the toolchain, in the Windows arm of `link_args` in `bazel/internal/cc-toolchain/args/BUILD.bazel`: advapi32, comdlg32, gdi32, kernel32, ole32, oleaut32, shell32, user32, uuid and winspool. That is the set `cl.exe` has linked by default since the mid nineties, and it is the same set Bazel's own MSVC toolchain uses. Third party Windows code assumes it is present and does not name these libraries, because on Windows nobody has to.
