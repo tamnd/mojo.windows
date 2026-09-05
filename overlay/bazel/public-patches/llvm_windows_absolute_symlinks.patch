@@ -1,0 +1,113 @@
+--- a/utils/bazel/configure.bzl
++++ b/utils/bazel/configure.bzl
+@@ -30,10 +30,86 @@
+ 
+ MAX_TRAVERSAL_STEPS = 1000000  # "big number" upper bound on total visited dirs
+ 
++# Windows resolves a relative symlink against the path that was used to reach
++# the link rather than against the directory the link is really in. Bazel
++# reaches an external repository from the execroot through a junction it plants
++# per repository, and it only plants one for a repository the build actually
++# uses, so there is no execroot entry for llvm-raw at all. A link in here whose
++# target is ../../+llvm_source+llvm-raw/... then lands on a path under the
++# execroot that does not exist, and every source file in this repository is
++# missing as far as a compile action is concerned.
++#
++# Handing repository_ctx.symlink an absolute target does not help on its own,
++# because Bazel rewrites every link in a fetched repository whose target is
++# under the output base into a relative one, and it does that after the
++# repository rule has finished, so there is nowhere left in the rule to undo it.
++# What it does leave alone is a target that is not under the output base. So the
++# links are pointed at llvm-raw through a junction that sits next to the output
++# base instead of inside it, which is the same directory reached by a name Bazel
++# does not rewrite.
++_MAKE_JUNCTION = (
++    "$j = '{junction}'; $t = '{target}'; " +
++    "if ([IO.Directory]::Exists($j)) {{ [IO.Directory]::Delete($j) }}; " +
++    "New-Item -ItemType Junction -Path $j -Target $t | Out-Null"
++)
++
++def _windows_link_root(repository_ctx, src_root):
++    """Returns the name Windows links should call llvm-raw by, else None.
++
++    Nothing to do on Linux or macOS, where a relative link resolves against the
++    directory the link is really in whichever path was used to reach it, so the
++    links Bazel leaves behind are correct as they stand.
++    """
++    if "windows" not in repository_ctx.os.name.lower():
++        return None
++
++    powershell = repository_ctx.which("powershell.exe")
++    if not powershell:
++        fail("powershell.exe is not on PATH, and it is what makes the " +
++             "junction the llvm-project links have to go through")
++
++    # The repository is at <output base>/external/<name>, so two levels up is
++    # the output base, and the junction goes beside it named after it so that
++    # two output bases on one machine do not end up sharing one.
++    output_base = repository_ctx.path(".").dirname.dirname
++    junction = "{}/llvm-raw.{}".format(
++        output_base.dirname,
++        output_base.basename,
++    )
++
++    result = repository_ctx.execute(
++        [
++            str(powershell),
++            "-NoProfile",
++            "-NonInteractive",
++            "-Command",
++            _MAKE_JUNCTION.format(
++                junction = junction.replace("/", "\\"),
++                target = str(src_root).replace("/", "\\"),
++            ),
++        ],
++        timeout = 120,
++    )
++    if result.return_code != 0:
++        fail("could not make the junction the llvm-project links go " +
++             "through:\n" + result.stdout + result.stderr)
++    return junction
++
++def _link_source(link_root, src_prefix, path):
++    """Names a file under llvm-raw the way the link to it should name it."""
++    if link_root == None:
++        return path
++    text = str(path)
++    if not text.startswith(src_prefix):
++        return path
++    return link_root + text[len(src_prefix):]
++
+ def _overlay_directories(repository_ctx):
+     src_root = repository_ctx.path(Label("@llvm-raw//:WORKSPACE")).dirname
+     overlay_root = src_root.get_child("utils/bazel/llvm-project-overlay")
+     target_root = repository_ctx.path(".")
++    link_root = _windows_link_root(repository_ctx, src_root)
++    src_prefix = str(src_root)
+ 
+     # Tries to minimize the number of symlinks created (that is, does not symlink
+     # every single file). Symlinks every file in the overlay directory. Only symlinks
+@@ -59,7 +135,10 @@
+             else:
+                 src_path = overlay_root.get_child(full_rel_path)
+                 dst_path = target_root.get_child(full_rel_path)
+-                repository_ctx.symlink(src_path, dst_path)
++                repository_ctx.symlink(
++                    _link_source(link_root, src_prefix, src_path),
++                    dst_path,
++                )
+ 
+         # Symlink source dirs (if not themselves overlaid) and files.
+         for src_entry in src_root.get_child(rel_dir).readdir():
+@@ -68,7 +147,10 @@
+                 # Skip: overlay has a directory with this name
+                 continue
+ 
+-            repository_ctx.symlink(src_entry, target_root.get_child(rel_dir + "/" + name))
++            repository_ctx.symlink(
++                _link_source(link_root, src_prefix, src_entry),
++                target_root.get_child(rel_dir + "/" + name),
++            )
+ 
+         if not stack:
+             return
