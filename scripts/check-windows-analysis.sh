@@ -61,7 +61,7 @@ fi
 (
   cd "$CHECKOUT"
   ./bazelw build --nobuild --keep_going \
-    --config=build-mojo --config=windows \
+    --config=build-mojo --config=windows-cross \
     "${extra[@]}" \
     -- "${targets[@]}"
 ) > "$log" 2>&1 || true

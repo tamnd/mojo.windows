@@ -28,9 +28,26 @@ build:public-cache --remote_cache=grpcs://modular-public.buildbuddy.io
 build:build-mojo --//:use_prebuilt_mojo_toolchain=false
 build:prebuilt-mojo --//:use_prebuilt_mojo_toolchain=true
 
-# Cross build for a Windows x86_64 target. Combine it with --config=build-mojo and
-# with the --repo_env flag that scripts/windows-sysroot.sh prints, which is not in
-# here because the sysroot path is different on every machine.
+# There are two different questions here that used to share one config name, and they
+# only looked like one question while every Windows build was a cross build.
+#
+# bazel/internal/common.bazelrc turns on --enable_platform_specific_config, so Bazel
+# applies build:windows by itself whenever the machine running Bazel is Windows. That
+# is not something we opted into and it is not something we can decline without also
+# losing the linux and macos arms upstream relies on. So build:windows is host keyed
+# whether we like it or not, and the honest thing is to let it mean that. Cross
+# compiling to Windows is a separate question and it is windows-cross below.
+#
+# The one that bit: cross_test used to live here, so a native Windows build silently
+# turned on the harness that exists for driving a target from another machine, on the
+# one machine where the driver and the target are the same machine.
+build:windows --platforms=//:windows-x86_64-platform
+build:windows --repo_env=MODULAR_TARGET=windows:x86_64
+
+# Cross build for a Windows x86_64 target from a machine that is not Windows. Combine
+# it with --config=build-mojo and with the --repo_env flag that
+# scripts/windows-sysroot.sh prints, which is not in here because the sysroot path is
+# different on every machine.
 #
 # MODULAR_TARGET has to be set alongside the platform rather than only the
 # platform. bazel/internal/cfg_workaround.bzl reads it to decide whether the tools
@@ -39,12 +56,13 @@ build:prebuilt-mojo --//:use_prebuilt_mojo_toolchain=true
 # are wanted for the target, which is right for an ordinary build where the two are
 # the same machine and wrong here: the compiler gets cross built to Windows and
 # Bazel then tries to run it on the Linux host.
-build:windows --platforms=//:windows-x86_64-platform
-build:windows --repo_env=MODULAR_TARGET=windows:x86_64
+build:windows-cross --platforms=//:windows-x86_64-platform
+build:windows-cross --repo_env=MODULAR_TARGET=windows:x86_64
 
 # A test harness runs on the machine driving the build and not on the target. See
 # bazel/internal/cross_platform_test.bzl for what that costs and why it is needed.
-build:windows --//bazel/internal:cross_test
+# This is the line that must not reach a Windows host.
+build:windows-cross --//bazel/internal:cross_test
 
 # Check for a local gitignored bazel config.
 # NOTE: Import this last so that local configs can override.

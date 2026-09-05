@@ -68,7 +68,7 @@ STAGE="$OUT_DIR/$NAME"
 # shellcheck disable=SC2054
 BAZEL_ARGS=(
   --config=build-mojo
-  --config=windows
+  --config=windows-cross
   "--repo_env=MOJO_WINDOWS_SYSROOT=$SYSROOT"
   --linkopt=-Wl,/DEBUG
 )

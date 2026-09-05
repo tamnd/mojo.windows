@@ -3,7 +3,7 @@
 # runs them.
 #
 #   scripts/test-tier.sh 0                        # run tier 0 for the host
-#   scripts/test-tier.sh 1 --config=windows ...   # anything after the tier goes to Bazel
+#   scripts/test-tier.sh 1 --config=windows-cross ...   # anything after the tier goes to Bazel
 #   scripts/test-tier.sh 1 --print                # just the patterns, one per line
 #
 # The point of this is that "tier 1 is green" is a claim someone can check in one command,

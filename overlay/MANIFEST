@@ -148,6 +148,7 @@ new	-	bazel/internal/cc-toolchain/tools/multi-platform-clang.py
 delete	98e407372b12965060dee685c45481c2ebce643d	bazel/internal/cc-toolchain/tools/multi-platform-clang.sh
 edit	867f2dec5a725a77a1655b5bbad2f2d833e28c8c	bazel/internal/cc-toolchain/tools/tools.bzl
 new	-	bazel/internal/cc-toolchain/windows_sysroot_repository.bzl
+edit	98ded8955b6427dd4803a4d3694dd11f4a617439	bazel/internal/common.bazelrc
 edit	edb67a035194ce0b99f28058a68828d923170991	bazel/internal/config.bzl
 new	-	bazel/internal/cross_platform_test.bzl
 new	-	bazel/internal/detect_local_resources.ps1

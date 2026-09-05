@@ -5,7 +5,7 @@
 #
 #   ./scripts/run-on-windows.sh bazel-bin/Mojo/test/abi-conformance/frames.exe
 #
-#   ./bazelw run --config=build-mojo --config=windows \
+#   ./bazelw run --config=build-mojo --config=windows-cross \
 #     --repo_env=MOJO_WINDOWS_SYSROOT=... \
 #     --run_under="$PWD/scripts/run-on-windows.sh" //Mojo/test/abi-conformance:frames
 #

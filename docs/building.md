@@ -155,14 +155,16 @@ Two things to get right when you add one. The spelling is `-Wl,/DEFAULTLIB:foo.l
 There is one in the tree for exactly this purpose. From a Linux x86_64 host with the sysroot in place:
 
 ```
-./bazelw build --config=build-mojo --config=windows \
+./bazelw build --config=build-mojo --config=windows-cross \
   --repo_env=MOJO_WINDOWS_SYSROOT=/path/windows-sysroot.sh/printed \
   //Mojo/examples/windows-hello:hello
 ```
 
 That produces `bazel-bin/Mojo/examples/windows-hello/hello.exe`, a PE32+ console executable, and building it involves cross compiling the Mojo compiler's own dependencies for the host, compiling the program with a Mojo compiler that runs on Linux, and linking the result against the MSVC runtime with `lld-link`.
 
-`--config=windows` is two flags, the platform and `MODULAR_TARGET`, and the second one is easy to leave out because it looks redundant. It is not. Without it every tool the build needs on the way to the answer gets configured for the target rather than for the machine doing the work, so Bazel cross compiles the Mojo compiler to Windows and then tries to execute it, and what you see is a launcher complaining about network paths.
+`--config=windows-cross` is three flags, the platform, `MODULAR_TARGET` and the cross test harness. `MODULAR_TARGET` is the one that is easy to leave out because it looks redundant next to the platform. It is not. Without it every tool the build needs on the way to the answer gets configured for the target rather than for the machine doing the work, so Bazel cross compiles the Mojo compiler to Windows and then tries to execute it, and what you see is a launcher complaining about network paths.
+
+It used to be called `--config=windows` and the rename is not cosmetic. `bazel/internal/common.bazelrc` turns on `--enable_platform_specific_config`, which means Bazel applies `build:windows` by itself whenever the machine running Bazel is Windows. So that name was answering two questions at once, what are we building for and what are we building on, and it only looked like one question while every Windows build was a cross build. On a native Windows host it silently turned on the harness whose entire job is to drive a target from a different machine, on the one machine where the driver and the target are the same machine. `build:windows` now means the host is Windows, which is what Bazel had already decided it meant, and `build:windows-cross` means the target is Windows and the host is not.
 
 The executable is not standalone. It needs `KGENCompilerRTShared.dll`, `MSupportGlobals.dll` and `AsyncRTRuntimeGlobals.dll`, and Bazel puts all three next to it, so the whole of that directory is what you move to a Windows machine.
 
@@ -175,7 +177,7 @@ If you ever do end up running one of these without its DLLs, the symptom is noth
 Bazel cannot natively run a Windows test from a Linux execution host. `scripts/run-on-windows.sh` is the shim that gets around that. It takes a Windows binary, puts it and the DLLs beside it on a Windows machine, runs it, gives you back its exit code and its output, and deletes what it copied. Hand it to Bazel as `--run_under`, or call it directly on a path.
 
 ```sh
-./bazelw run --config=build-mojo --config=windows \
+./bazelw run --config=build-mojo --config=windows-cross \
   --repo_env=MOJO_WINDOWS_SYSROOT=/path/windows-sysroot.sh/printed \
   --run_under="$PWD/../../scripts/run-on-windows.sh" \
   //Mojo/test/abi-conformance:frames
@@ -188,6 +190,10 @@ Neither transport is emulation. Both start the same PE on the same Windows kerne
 `bazel test` works through it as well as `bazel run`, and on the wsl transport it needs three flags that are not obvious. `--strategy=TestRunner=local` is one, because the sandbox mounts `/mnt/c` read only and staging into it fails as `mkdir: Read-only file system`. `--test_env=WSL_INTEROP --test_env=WSL_DISTRO_NAME` are the other two, because interop is a vsock to a server on the Windows side and those two variables are how a process finds it, so without them starting the executable times out as `UtilAcceptVsock:273: accept4 failed 110` and reads like a broken binary rather than a missing variable.
 
 That same error has a second cause, and it looks identical. The vsock belongs to the WSL session that opened it, so a run started with `nohup` or `setsid` and then left to itself keeps working exactly as long as the session that launched it, and every test after that point fails the same way. A whole suite going from green to a couple of dozen passes and two hundred failures, all of them at about ten seconds, is this and not a regression. Run the Windows suites in the foreground of a session you keep open.
+
+There is a third failure that is also not a test failure. Every test on this transport copies its executable and its DLLs across the `/mnt/c` boundary, and at high parallelism that boundary runs out of memory rather than queueing, which surfaces as `cp: error writing '/mnt/c/tmp/mojostage/...': Cannot allocate memory` in a single test that has nothing wrong with it. It moves around between runs, which is the tell. `--jobs=8` for the Windows suites rather than the 12 the Linux ones want.
+
+Do not reach for `--runs_per_test` to decide whether one of these was a flake, at least not for the `os/path` tests. They write to a fixed `Output` directory under the test's own source path, so several runs of one test collide with each other and you get a clean looking two out of three failure that is entirely an artefact of asking. Run the tier again instead.
 
 The shim carries a target's declared environment across, which is worth knowing because nothing about that is automatic. A fresh `cmd` starts with none of it, and WSL hands a Windows process only the variables named in `WSLENV`, so `export` on the Linux side is not enough and a test reading one gets an empty string. Under `bazel test` the whole of Bazel's environment travels minus a deny list of its own bookkeeping, which is safe because Bazel has already scrubbed the calling shell. Run by hand there is no scrubbing and the environment is your login shell, tokens included, so nothing is swept and `MOJO_WINDOWS_TEST_ENV` takes `NAME=VALUE` lines for what should cross. `MOJO_WINDOWS_TEST_VERBOSE` prints what was set.
 
@@ -203,7 +209,7 @@ Tier 0 is pure computation. Tier 1 is the operating system surface this port is 
 
 ```sh
 scripts/test-tier.sh 0                        # run tier 0 for the host
-scripts/test-tier.sh 1 --config=windows ...   # anything after the tier goes to Bazel
+scripts/test-tier.sh 1 --config=windows-cross ...   # anything after the tier goes to Bazel
 scripts/test-tier.sh 1 --print                # just the patterns, one per line
 ```
 
@@ -383,7 +389,11 @@ The third is #247 and was a real piece of work. Every `toolchain()` in `bazel/in
 
 It is fixed now, and the interesting part was not the registration. Adding a fourth execution platform meant fetching a clang that runs on Windows, which is the stock llvm-project release rather than one of Modular's builds because there is no Windows one of those, and it meant finding the selects that are keyed on the target platform and mean the execution platform. Which clang supplies the resource directory and the builtin headers is decided by the machine running clang, and those selects had been getting the right answer only because host and target always agreed. A Windows target can be reached from two different machines now, so they had to start asking the host. Bazel has no config setting for the execution platform, so asking the host means a repository rule reading `rctx.os.name`.
 
-So the friction list turned out to be mostly folklore, the hang that looked like Bazel's fault was ours, and the toolchain that had never been asked to run on Windows has now been asked. What stops a Windows host today is two things further in. The pip lock file has three environments and none of them is Windows, so the mypy aspect that the rc turns on for every build cannot resolve its own dependencies, which is #252. Behind that, the three cc toolchain drivers are bare Python scripts and Windows has no shebang, so the first compile action will fail to launch until they get a launcher, which is #253.
+So the friction list turned out to be mostly folklore, the hang that looked like Bazel's fault was ours, and the toolchain that had never been asked to run on Windows has now been asked.
+
+Two more went the same way. The pip lock file declared darwin and linux and nothing else, so the mypy aspect the rc turns on for every build could not resolve its own dependencies, and that was #252. Then the TestRunner strategy chain named `sandboxed`, which does not exist on Windows, and Bazel validates every name in a chain up front rather than skipping the ones that are not registered, so the invocation failed after analysis had already succeeded. That was #256, and fixing it is what turned up the config name that meant two things.
+
+A Windows host now gets through analysis on the default rc with nothing on the command line. What stops it at the next step is #253. The three cc toolchain drivers are bare Python scripts, Windows has no shebang, and `CreateProcess` will not start a `.py` whatever the file association says, so the first compile action fails to launch until they get a launcher.
 
 ## Machines
 
