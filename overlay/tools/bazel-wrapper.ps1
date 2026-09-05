@@ -106,8 +106,16 @@ if (-not $env:GITHUB_REPOSITORY) {
 # This goes in the generated rc rather than in .bazelrc because .bazelrc is
 # shared with the Unix hosts, where SystemRoot does not exist and the line would
 # be a lie. This file is only ever written by the Windows wrapper.
+#
+# The backslashes are doubled because Bazel's rc parser treats a backslash as an
+# escape character and drops it. Written plainly, C:\WINDOWS reaches the build as
+# C:WINDOWS, which is not a broken path but a drive relative one, so it resolves
+# against whatever directory the subprocess happens to be started in and points
+# at nothing. Quoting the value does not help, the parser eats the backslash
+# inside quotes too. Doubling is the only form that survives. See #248.
 if ($env:SystemRoot) {
-  $bazelrcLines += "common --repo_env=SystemRoot=$env:SystemRoot"
+  $escapedSystemRoot = $env:SystemRoot -replace "\\", "\\"
+  $bazelrcLines += "common --repo_env=SystemRoot=$escapedSystemRoot"
 }
 
 $bazelrcRoot = Join-Path $repoRoot "build"
