@@ -138,6 +138,7 @@ edit	d6ec74a790ce4357a3ed2352d2f55252339e8c0a	bazel/internal/cc-toolchain/args/B
 edit	a08eade47742024216745d2a83a677f4590ee48b	bazel/internal/cc-toolchain/args/interface-libraries/BUILD.bazel
 edit	e32d05dbfeb2fb90cf87d1a231f32f84b92e52cb	bazel/internal/cc-toolchain/args/modular/BUILD.bazel
 edit	0161f0e54c9bd94f9bbf1300995f05281ec9e38a	bazel/internal/cc-toolchain/features/features.bzl
+new	-	bazel/internal/cc-toolchain/host_clang_repository.bzl
 edit	97703532c465ffe3d7b8ab8f20ed36c2a84c53d9	bazel/internal/cc-toolchain/tools/BUILD.bazel
 new	-	bazel/internal/cc-toolchain/tools/linker-driver.py
 delete	bbd8b61acf0020064c89e9eb1280984530b887e0	bazel/internal/cc-toolchain/tools/linker-driver.sh
@@ -164,6 +165,7 @@ new	-	bazel/internal/windows-argv.ps1
 new	-	bazel/internal/windows-math-fixups.c
 edit	769b5db911206bbaaa73acad4e5338a32f58f714	bazel/modular_wheel_repository.bzl
 new	-	bazel/public-patches/boringssl_gnu_driver_flags.patch
+new	-	bazel/public-patches/clang-windows.BUILD
 edit	5c97c045b3cd8aa6e59aa4706665ee70e85ac8ca	bazel/public-patches/crashpad.BUILD
 new	-	bazel/public-patches/curl_gnu_driver_flags.patch
 new	-	bazel/public-patches/google_benchmark_gnu_driver_flags.patch

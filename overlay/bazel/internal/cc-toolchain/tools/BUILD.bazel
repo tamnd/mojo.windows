@@ -1,9 +1,56 @@
+load("@host-clang//:host_clang.bzl", "HOST_IS_WINDOWS")
 load("@rules_cc//cc/toolchains:tool.bzl", "cc_tool")
 load("//bazel:config.bzl", "TOP_LEVEL_TAG")
 load(":builtin_module_map.bzl", "builtin_module_map")
 load(":tools.bzl", "declare_tools")
 
 package(default_visibility = ["//visibility:public"])
+
+# Which clang runs when the target is Windows. Two machines can build a Windows
+# target now, a Linux x86_64 host cross compiling and a Windows host building
+# natively, and the tool has to be one the machine doing the work can execute.
+# The selects below are keyed on the target, which is Windows either way, so the
+# answer comes from the host instead. host_clang_repository.bzl says why that is
+# a repository rule and not a config setting.
+#
+# Only Windows needs asking. For the other three, host and target agree in every
+# combination this project builds, so a target keyed select gets the right answer
+# and always has.
+WINDOWS_TOOL_PLATFORM = "windows-x86_64" if HOST_IS_WINDOWS else "linux-x86_64"
+
+# The Windows clang is behind a conditional and the other three are not, which
+# looks inconsistent and is not. The three carry every clang the driver might
+# pick, so that one cc_tool works whatever machine the action lands on, and they
+# cost the same on every host. The Windows one would be another 800 megabytes
+# fetched by every Linux and macOS developer to cover a case that cannot happen,
+# since the driver picks by asking what it is running on and a machine that is
+# not Windows will never name it. So it is listed only where it can be chosen.
+WINDOWS_CLANG = ["@clang-windows-x86_64//:bin/clang.exe"] if HOST_IS_WINDOWS else []
+
+WINDOWS_CLANGXX = ["@clang-windows-x86_64//:bin/clang++.exe"] if HOST_IS_WINDOWS else []
+
+WINDOWS_LINKER = [
+    "@clang-windows-x86_64//:bin/clang.exe",
+    "@clang-windows-x86_64//:bin/clang++.exe",
+    "@clang-windows-x86_64//:bin/dsymutil.exe",
+    "@clang-windows-x86_64//:ld",
+] if HOST_IS_WINDOWS else []
+
+# The tools below that are the compiler's own files rather than something it
+# produces. Which archive they come from is decided by the machine that runs
+# clang, so they all need the same treatment and it is easier to see that when
+# the list has a name.
+HOST_TOOLS = [
+    "builtin_headers",
+    "clang-format",
+    "clang-tidy",
+    "clangd",
+    "llvm-install-name-tool",
+    "llvm-objcopy",
+    "llvm-otool",
+    "resource_directory",
+    "resource_directory_filegroup",
+]
 
 cc_tool(
     name = "multi-platform-clang",
@@ -12,7 +59,7 @@ cc_tool(
         "@clang-linux-aarch64//:bin/clang",
         "@clang-linux-x86_64//:bin/clang",
         "@clang-macos//:bin/clang",
-    ],
+    ] + WINDOWS_CLANG,
     tags = ["manual"],
 )
 
@@ -23,7 +70,7 @@ cc_tool(
         "@clang-linux-aarch64//:bin/clang++",
         "@clang-linux-x86_64//:bin/clang++",
         "@clang-macos//:bin/clang++",
-    ],
+    ] + WINDOWS_CLANGXX,
     tags = ["manual"],
 )
 
@@ -43,7 +90,7 @@ cc_tool(
         "@clang-macos//:bin/clang++",  # symlink to clang
         "@clang-macos//:bin/dsymutil",
         "@clang-macos//:ld",
-    ],
+    ] + WINDOWS_LINKER,
     tags = [
         "manual",
         # HACK: until our lld contains this fix https://github.com/llvm/llvm-project/commit/9234066476aa82cfac3cee564883a3124df4584e
@@ -64,29 +111,16 @@ declare_tools()
             # These are the compiler's own files, so what decides them is which machine
             # runs clang and not what clang is asked to produce. For the three arms
             # above those are the same thing, so a target keyed select gets the right
-            # answer by accident. Cross compiling to Windows is the first case where
-            # they differ, and the answer is the host's clang, which is why this arm
-            # names linux-x86_64 and not anything Windows shaped. It is correct only
-            # because the Windows toolchain is registered for a Linux x86_64 execution
-            # platform and nothing else, which is spelled out in the parent BUILD file.
-            "//:windows_x86_64": ":linux-x86_64-{}".format(tool),
+            # answer by accident. Windows is where they come apart, which is what
+            # WINDOWS_TOOL_PLATFORM at the top of this file is for.
+            "//:windows_x86_64": ":{}-{}".format(WINDOWS_TOOL_PLATFORM, tool),
         }),
         tags = [
             "manual",
             TOP_LEVEL_TAG,
         ],
     )
-    for tool in [
-        "builtin_headers",
-        "clang-format",
-        "clang-tidy",
-        "clangd",
-        "llvm-install-name-tool",
-        "llvm-objcopy",
-        "llvm-otool",
-        "resource_directory",
-        "resource_directory_filegroup",
-    ]
+    for tool in HOST_TOOLS
 ]
 
 builtin_module_map(
@@ -105,9 +139,10 @@ builtin_module_map(
             "@sysroot-macos//sysroot:root",
         ],
         # Host clang headers, as above, and the target's own headers, unlike above. The
-        # sysroot half of this genuinely is target keyed, so it is the Windows one.
+        # sysroot half of this genuinely is target keyed, so it is the Windows one, and
+        # the clang half asks the host for the reason given at the top of this file.
         "//:windows_x86_64": [
-            "@clang-linux-x86_64//:include_dir",
+            "@clang-{}//:include_dir".format(WINDOWS_TOOL_PLATFORM),
             "@sysroot-windows//sysroot:root",
         ],
     }),

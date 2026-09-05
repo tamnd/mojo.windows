@@ -29,15 +29,23 @@ import sys
 ARCHIVE_PREFIX = "+http_archive+clang-"
 
 
+# What an executable in the clang archive is called on this machine. The archive
+# for Windows is the stock LLVM release and ships bin/clang.exe, and the three
+# Unix ones ship bin/clang, so the name has to be built rather than written.
+EXE = ".exe" if os.name == "nt" else ""
+
+
 def host_platform() -> str:
     """Names the clang archive for the machine running this build."""
     if sys.platform == "darwin":
         return "macos"
     if sys.platform.startswith("linux"):
         return "linux-" + platform.machine()
-    # Native Windows hosting arrives here. There is no clang-windows-x86_64
-    # archive to name yet, so say that rather than build a repository name that
-    # does not exist and fail further down on a missing directory.
+    if sys.platform == "win32":
+        # x86_64 without asking, because it is the only Windows execution
+        # platform the cc toolchain registers and the only one bazelw will
+        # start on, so a machine that got this far is one.
+        return "windows-x86_64"
     raise SystemExit(f"error: no clang archive for host '{sys.platform}'")
 
 
@@ -61,7 +69,7 @@ def clang_root() -> str:
 
 def main(argv: list[str]) -> int:
     """Runs clang++, then stamps the parse header file if one was asked for."""
-    clang = os.path.join(clang_root(), "bin", "clang++")
+    clang = os.path.join(clang_root(), "bin", "clang++" + EXE)
     parse_header = os.environ.get("PARSE_HEADER")
 
     # There is nothing to do afterwards in the common case, so hand the process

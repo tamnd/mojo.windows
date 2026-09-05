@@ -38,15 +38,23 @@ class Options(NamedTuple):
     linker_args: list[str]
 
 
+# What an executable in the clang archive is called on this machine. The archive
+# for Windows is the stock LLVM release and ships bin/clang.exe, and the three
+# Unix ones ship bin/clang, so the name has to be built rather than written.
+EXE = ".exe" if os.name == "nt" else ""
+
+
 def host_platform() -> str:
     """Names the clang archive for the machine running this build."""
     if sys.platform == "darwin":
         return "macos"
     if sys.platform.startswith("linux"):
         return "linux-" + platform.machine()
-    # Native Windows hosting arrives here. There is no clang-windows-x86_64
-    # archive to name yet, so say that rather than build a repository name that
-    # does not exist and fail further down on a missing directory.
+    if sys.platform == "win32":
+        # x86_64 without asking, because it is the only Windows execution
+        # platform the cc toolchain registers and the only one bazelw will
+        # start on, so a machine that got this far is one.
+        return "windows-x86_64"
     raise SystemExit(f"error: no clang archive for host '{sys.platform}'")
 
 
@@ -250,7 +258,7 @@ def main(argv: list[str]) -> int:
             linker_args.append("-Wl,/IMPLIB:" + options.ifs_output)
 
     root = clang_root()
-    clang = os.path.join(root, "bin", "clang++")
+    clang = os.path.join(root, "bin", "clang++" + EXE)
 
     # Most links have nothing to do afterwards, so hand the process over rather
     # than hold a second one open for the length of the link.
@@ -263,7 +271,7 @@ def main(argv: list[str]) -> int:
         return status
 
     if options.dsym_path:
-        dsymutil = os.path.join(root, "bin", "dsymutil")
+        dsymutil = os.path.join(root, "bin", "dsymutil" + EXE)
         status = subprocess.run(
             [dsymutil, "-o", options.dsym_path, options.binary_path]
         ).returncode

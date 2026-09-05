@@ -628,6 +628,31 @@ http_archive(
     url = "https://modular-bazel-artifacts-public.s3.amazonaws.com/artifacts/llvm-macos/22.1.4/ea118e41dfffd5027b378ec932fff70a06be1ab054ffbdaf8209f64579aeee1c/llvm-macos.tar.xz",
 )
 
+# The clang that runs on a Windows host, which is what a Windows host needs before
+# anything in this tree resolves for it. The three archives above are Modular's own
+# LLVM builds and there is no Windows one, so this is the stock llvm-project release
+# at the same version number the other three are built from.
+#
+# Same version is not the same build. Modular's archives are built from Modular's
+# branch with Modular's options, and this one is whatever the LLVM release managers
+# ship, so the two can differ in ways a version number does not show: which targets
+# are compiled in, which sanitizers exist, whether assertions are on. Nothing in the
+# build depends on those today, and the alternative is building and hosting an LLVM
+# for Windows ourselves, which is a lot of machinery to own for a difference nobody
+# has yet been able to point at. If one turns up, this is the line to change.
+#
+# It also means a clang bump is now two lines and not one, and they can be moved
+# apart by accident. Keeping them next to each other is the whole defence.
+http_archive(
+    name = "clang-windows-x86_64",
+    # Same additions as clang.BUILD makes, with .exe on the tool names. The file
+    # says why it is a separate file.
+    build_file = "//bazel/public-patches:clang-windows.BUILD",
+    sha256 = "ed775bdaea7087c6c1aeac9498352cfcd8610d92dc4fe9eda9aecb15ce712a2c",
+    strip_prefix = "clang+llvm-22.1.4-x86_64-pc-windows-msvc",
+    url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.4/clang+llvm-22.1.4-x86_64-pc-windows-msvc.tar.xz",
+)
+
 SHELLCHECK_VERSION = "v0.11.0"
 
 [

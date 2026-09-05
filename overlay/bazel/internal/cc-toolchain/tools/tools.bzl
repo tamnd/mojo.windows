@@ -4,11 +4,24 @@ load("@rules_cc//cc/toolchains:tool.bzl", "cc_tool")
 load("@rules_cc//cc/toolchains:tool_map.bzl", "cc_tool_map")
 load("//bazel:config.bzl", "TOP_LEVEL_TAG")
 
+# The machines a compile action can run on, which is not the same list as the
+# machines a compile action can produce output for. A name here picks a clang
+# archive and nothing else, so windows-x86_64 means the clang that runs on
+# Windows, and the Windows target has been buildable from Linux since before
+# this entry existed.
 PLATFORMS = [
     "linux-aarch64",
     "linux-x86_64",
     "macos",
+    "windows-x86_64",
 ]
+
+# What the executables in each archive are called. A cc_tool names a file rather
+# than a command, so the extension is part of the label and there is nowhere
+# further down to add it.
+_EXECUTABLE_SUFFIX = {
+    "windows-x86_64": ".exe",
+}
 
 # buildifier: disable=unnamed-macro
 def declare_tools():
@@ -16,6 +29,8 @@ def declare_tools():
         _declare_tools(platform)
 
 def _declare_tools(platform):
+    exe = _EXECUTABLE_SUFFIX.get(platform, "")
+
     cc_tool_map(
         name = "{}_tools".format(platform),
         tags = ["manual"],
@@ -35,31 +50,31 @@ def _declare_tools(platform):
 
     cc_tool(
         name = "{}-llvm-ar".format(platform),
-        src = "@clang-{}//:bin/llvm-ar".format(platform),
+        src = "@clang-{}//:bin/llvm-ar{}".format(platform, exe),
         tags = ["manual"],
     )
 
     cc_tool(
         name = "{}-llvm-objcopy".format(platform),
-        src = "@clang-{}//:bin/llvm-objcopy".format(platform),
+        src = "@clang-{}//:bin/llvm-objcopy{}".format(platform, exe),
         tags = ["manual"],
     )
 
     cc_tool(
         name = "{}-llvm-strip".format(platform),
-        src = "@clang-{}//:bin/llvm-strip".format(platform),
+        src = "@clang-{}//:bin/llvm-strip{}".format(platform, exe),
         tags = ["manual"],
     )
 
     cc_tool(
         name = "{}-llvm-dwp".format(platform),
-        src = "@clang-{}//:bin/llvm-dwp".format(platform),
+        src = "@clang-{}//:bin/llvm-dwp{}".format(platform, exe),
         tags = ["manual"],
     )
 
     cc_tool(
         name = "{}-clang-tidy".format(platform),
-        src = "@clang-{}//:bin/clang-tidy".format(platform),
+        src = "@clang-{}//:bin/clang-tidy{}".format(platform, exe),
         tags = [
             "manual",
             TOP_LEVEL_TAG,  # Used in .bazelrc
@@ -89,34 +104,34 @@ def _declare_tools(platform):
 
     cc_tool(
         name = "{}-clang-format".format(platform),
-        src = "@clang-{}//:bin/clang-format".format(platform),
+        src = "@clang-{}//:bin/clang-format{}".format(platform, exe),
         tags = ["manual"],
     )
 
     cc_tool(
         name = "{}-clangd".format(platform),
-        src = "@clang-{}//:bin/clangd".format(platform),
+        src = "@clang-{}//:bin/clangd{}".format(platform, exe),
         tags = ["manual"],
     )
 
     cc_tool(
         name = "{}-llvm-install-name-tool".format(platform),
-        src = "@clang-{}//:bin/llvm-install-name-tool".format(platform),
-        data = ["@clang-{}//:bin/llvm-objcopy".format(platform)],
+        src = "@clang-{}//:bin/llvm-install-name-tool{}".format(platform, exe),
+        data = ["@clang-{}//:bin/llvm-objcopy{}".format(platform, exe)],
         tags = ["manual"],
     )
 
     cc_tool(
         name = "{}-llvm-otool".format(platform),
-        src = "@clang-{}//:bin/llvm-otool".format(platform),
-        data = ["@clang-{}//:bin/llvm-objdump".format(platform)],
+        src = "@clang-{}//:bin/llvm-otool{}".format(platform, exe),
+        data = ["@clang-{}//:bin/llvm-objdump{}".format(platform, exe)],
         tags = ["manual"],
     )
 
     cc_tool(
         name = "{}-single-platform-clang".format(platform),
         src = ":multi-platform-clang.py",
-        data = ["@clang-{}//:bin/clang".format(platform)],
+        data = ["@clang-{}//:bin/clang{}".format(platform, exe)],
         tags = ["manual"],
     )
 
@@ -132,7 +147,7 @@ def _declare_tools(platform):
     cc_tool(
         name = "{}-single-platform-clang++".format(platform),
         src = ":multi-platform-clang++.py",
-        data = ["@clang-{}//:bin/clang++".format(platform)],
+        data = ["@clang-{}//:bin/clang++{}".format(platform, exe)],
         tags = ["manual"],
     )
 
@@ -149,9 +164,9 @@ def _declare_tools(platform):
         name = "{}-single-platform-linker_driver".format(platform),
         src = ":linker-driver.py",
         data = [
-            "@clang-{}//:bin/clang".format(platform),
-            "@clang-{}//:bin/clang++".format(platform),  # symlink to clang
-            "@clang-{}//:bin/dsymutil".format(platform),
+            "@clang-{}//:bin/clang{}".format(platform, exe),
+            "@clang-{}//:bin/clang++{}".format(platform, exe),  # same binary, other name
+            "@clang-{}//:bin/dsymutil{}".format(platform, exe),
             "@clang-{}//:ld".format(platform),
         ],
         tags = [

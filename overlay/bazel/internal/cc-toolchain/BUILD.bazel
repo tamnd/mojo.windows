@@ -383,7 +383,7 @@ toolchain(
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
 
-# Windows target, cross compiled from Linux x86_64, and only from there.
+# Windows target, cross compiled from Linux x86_64.
 #
 # The name of a cc_toolchain above says which machine runs it and not what it produces.
 # That was already true before Windows existed here, which is what the comment on the
@@ -392,21 +392,13 @@ toolchain(
 # second toolchain() at an existing cc_toolchain with a Windows target picks up the
 # Windows flags without duplicating anything.
 #
-# Only one execution platform, and that is a real limitation rather than a decision to
-# be tidy. Several selects in this toolchain are keyed on the target platform but mean
-# the execution platform: which clang tarball to take the resource directory and the
-# builtin headers from, for instance, in tools/BUILD.bazel. Those work today because
-# for a Linux or macOS target the two happen to agree. They stop agreeing the moment
-# you cross compile to a third OS, and a target keyed select cannot tell macOS host
-# from Linux host, so it has to be pinned to one host and Linux x86_64 is the one the
-# project builds on. Registering macOS as well would not fail, it would quietly hand a
-# macOS clang the Linux clang's resource directory, which is worse.
-#
-# Lifting that needs execution platform keyed config settings, which do not exist here
-# yet. Until then, cross compile from Linux x86_64.
-#
-# Execution still happens on the host either way, so the bash toolchain drivers are
-# untouched and none of this is a step toward building on Windows, which is M6.
+# macOS is not registered as an execution platform for a Windows target and should not
+# be. It would not fail, it would quietly hand a macOS clang the Linux clang's resource
+# directory, because a couple of selects in tools/BUILD.bazel are keyed on the target
+# platform and mean the execution platform, and a target keyed select cannot tell a
+# macOS host from a Linux host. The Windows arm of those selects asks the host directly
+# instead, which is what makes the registration below possible, and doing the same for
+# macOS would mean asking it in three more places for a host nobody builds on.
 toolchain(
     name = "windows-x86_64-toolchain",
     exec_compatible_with = [
@@ -419,6 +411,34 @@ toolchain(
         "@platforms//os:windows",
     ],
     toolchain = ":linux-x86_64_clang_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
+# Windows target, built on Windows.
+#
+# Same target, different machine doing the work, so the target keyed selects inside the
+# cc_toolchain give the same answers as the registration above and the only difference
+# is the tool_map, which is where the clang lives. That is the whole of it: the shape
+# was already right, and what was missing was a clang that runs on Windows and a
+# toolchain that says so.
+#
+# Without this, a Windows host resolves no C++ toolchain at all and analysis stops at
+# "No matching toolchains found for @@bazel_tools//tools/cpp:toolchain_type", which is
+# a confusing thing to be told on a machine that has a compiler on it. The registration
+# above is the only one that mentions a Windows target, and it demands a Linux
+# execution platform, so on Windows it is never a candidate.
+toolchain(
+    name = "windows-x86_64-native-toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+    ],
+    tags = [TOP_LEVEL_TAG],  # Used from MODULE.bazel
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+    ],
+    toolchain = ":windows-x86_64_clang_toolchain",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
 

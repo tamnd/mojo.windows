@@ -23,6 +23,10 @@ windows_sysroot_repository = use_repo_rule("//bazel/internal/cc-toolchain:window
 
 windows_sysroot_repository(name = "sysroot-windows")
 
+host_clang_repository = use_repo_rule("//bazel/internal/cc-toolchain:host_clang_repository.bzl", "host_clang_repository")
+
+host_clang_repository(name = "host-clang")
+
 include("//bazel:mojo.MODULE.bazel")
 
 link_hack = use_repo_rule("//bazel/internal:link_hack.bzl", "link_hack")
