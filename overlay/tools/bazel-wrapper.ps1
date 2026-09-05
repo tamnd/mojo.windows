@@ -90,6 +90,26 @@ if (-not $env:GITHUB_REPOSITORY) {
   $bazelrcLines += "build --config=disk-cache"
 }
 
+# .bazelrc turns on --incompatible_strict_action_env to keep PATH out of actions,
+# which also replaces the environment a repository rule's subprocesses get with a
+# fixed one. That fixed one has no SystemRoot in it, and on Windows a program
+# that touches a socket needs SystemRoot to find the Winsock provider catalog.
+#
+# Python is such a program without meaning to be. Importing asyncio pulls in
+# _overlapped, _overlapped initialises Winsock, and with SystemRoot missing that
+# fails with WinError 10106, "The requested service provider could not be loaded
+# or initialized", which names neither Winsock nor the variable that is missing.
+# rules_pycross runs pip in a repository rule, pip imports asyncio through
+# tenacity, and the whole build stops there before a single package has been
+# analysed.
+#
+# This goes in the generated rc rather than in .bazelrc because .bazelrc is
+# shared with the Unix hosts, where SystemRoot does not exist and the line would
+# be a lie. This file is only ever written by the Windows wrapper.
+if ($env:SystemRoot) {
+  $bazelrcLines += "common --repo_env=SystemRoot=$env:SystemRoot"
+}
+
 $bazelrcRoot = Join-Path $repoRoot "build"
 $logsDir = Join-Path $bazelrcRoot "logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null

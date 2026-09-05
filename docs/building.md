@@ -353,7 +353,33 @@ This is milestone M6 and it is a separate body of work.
 
 The three toolchain driver scripts were rewritten in Python in #33 rather than PowerShell, since the build already needs python3 on the host and one implementation then covers every platform. The wrappers above are PowerShell because they run before the build exists, on a machine that has PowerShell and may well not have Python.
 
-Then there is Bazel on Windows itself. Assume `--features=compiler_param_file` is required rather than optional at this size. Set a short output root such as `--output_user_root=C:\b` from the start. Turn on long path support and Developer Mode, the latter so symlinks work without elevation. Exclude the source tree and the output root from Defender, because real time scanning a Bazel build is a large and completely silent tax. And the `Mojo/` against `mojo` case collision has to be fixed before any of this works on NTFS.
+## Bazel on Windows, what actually bites
+
+#34 collected the Bazel on Windows problems that are usually described as inevitable, so that they could be planned for rather than met one at a time. With Bazel now startable on Windows the list can be checked instead of assumed, and most of it does not survive contact.
+
+The setup for all of this: the reconstructed tree copied onto NTFS at `C:\m`, no WSL involved, `bazelw.bat --output_user_root=C:/b` for every invocation. Windows 11 26H1.
+
+**Case insensitivity is not a problem at this pin.** The claim was that upstream has a `Mojo/` directory and README links to `./mojo` that collide on NTFS. A link in a README is not a file, so it never reaches the filesystem, and the tree itself is clean: of 10869 tracked files there is not one pair of paths that differ only in case, and not one pair of directories either. The copy onto NTFS is complete, `bazel query //:all` returns the whole root package, and analysis loads 125 packages before it stops for an unrelated reason. If a collision is introduced later it will be a new bug rather than this one.
+
+**Path length is a problem and long path support is not optional.** With a four character output root, which is about as short as it gets, the longest path Bazel created was 296 characters, in the libcxx test suite inside a fetched repository. That is over `MAX_PATH` on its own, before any output path is derived from it. It worked because `LongPathsEnabled` is 1 on this machine. Turn that on, and keep the output root short anyway, because the margin it buys is spent immediately.
+
+**Param files were not reached and are probably already handled.** Nothing has compiled on Windows yet, so the command line length limit has not been tested. What can be said is that the toolchain already turns on `archive_param_file` and `gcc_quoting_for_param_files` for every platform, so the archive and link sides are covered by construction. The compile side is the open question.
+
+**clang-cl version parsing cannot apply.** Nothing here runs clang-cl. The toolchain uses clang in GNU driver mode on every platform, which is what the toolchain design decided long before this, so bazelbuild/bazel#17863 is not reachable from this repository.
+
+**Symlinks are unmeasured.** Developer Mode is on on the test machine, so Bazel has permission to create them, and nothing has got far enough into a build for the convenience symlinks to appear. Whether the runfiles tree is symlinked or copied, and what that costs, is a question for the first build that finishes.
+
+**Antivirus is still advice rather than a measurement.** Exclude the source tree and the output root from Defender. Real time scanning a Bazel build is a large tax and a completely silent one, so there is nothing to notice and nothing to attribute it to.
+
+What did stop the build was not on the list at all, and there were three of them.
+
+The first is fixed here. `.bazelrc` sets `--incompatible_strict_action_env` to keep `PATH` out of actions, which also gives a repository rule's subprocesses a fixed environment with no `SystemRoot` in it. On Windows a program that touches a socket needs `SystemRoot` to find the Winsock provider catalog, and Python is such a program without meaning to be: importing asyncio pulls in `_overlapped`, which initialises Winsock. rules_pycross runs pip inside a repository rule, pip imports asyncio by way of tenacity, and the whole thing fails with `WinError 10106`, "The requested service provider could not be loaded or initialized", which names neither Winsock nor the variable that is missing. `tools/bazel-wrapper.ps1` now writes `common --repo_env=SystemRoot=...` into the generated rc. That line is in the generated file rather than in `.bazelrc` because `.bazelrc` is shared with the Unix hosts, where the variable does not exist.
+
+The second is #248 and is not ours. Bazel's own Windows SDK autoconfiguration writes a `get_env.bat` that calls `vcvarsall.bat`, runs it through a repository rule, and hangs until the six hundred second timeout. The same script by hand finishes in two to three seconds, with the ordinary environment and with the stripped one the repository rule uses, so the environment is not what is wrong. It fetched successfully once and has hung on every attempt since.
+
+The third is #247 and is a real piece of work. Every `toolchain()` in `bazel/internal/cc-toolchain/BUILD.bazel` is registered with `exec_compatible_with` naming Linux or macOS, so with Bazel running on Windows nothing resolves and analysis fails with no matching toolchain for `@bazel_tools//tools/cpp:toolchain_type`. That is the boundary between a Windows host that can start Bazel and a Windows host that can build, and it is where native hosting actually begins.
+
+So the friction list turned out to be mostly folklore, and the two things standing in the way are a hang in Bazel's own SDK detection and a toolchain that has never been asked to run on Windows.
 
 ## Machines
 
