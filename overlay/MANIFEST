@@ -149,6 +149,7 @@ edit	867f2dec5a725a77a1655b5bbad2f2d833e28c8c	bazel/internal/cc-toolchain/tools/
 new	-	bazel/internal/cc-toolchain/windows_sysroot_repository.bzl
 edit	edb67a035194ce0b99f28058a68828d923170991	bazel/internal/config.bzl
 new	-	bazel/internal/cross_platform_test.bzl
+new	-	bazel/internal/detect_local_resources.ps1
 edit	56ca80da56af127f244a23d82d928732ffa90751	bazel/internal/lit.bzl
 edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.bazel
 edit	628de647178acb5de5fa6824e1a77ba303f5807c	bazel/internal/llvm-lit/validate_lit_features.py
@@ -159,6 +160,7 @@ edit	1e1ce7ca3cb12b9107d22729a15c9d524812caeb	bazel/internal/mojo_filecheck_test
 new	-	bazel/internal/mojo_filecheck_test.py
 edit	ee5164f099ed27101720d1dbda6eb8f94ec9913c	bazel/internal/mojo_test_environment.bzl
 edit	4e7575d34ad20d592013a888c5cd56b37d372a48	bazel/internal/runtool-shim.cpp
+new	-	bazel/internal/windows-argv.ps1
 new	-	bazel/internal/windows-math-fixups.c
 edit	769b5db911206bbaaa73acad4e5338a32f58f714	bazel/modular_wheel_repository.bzl
 new	-	bazel/public-patches/boringssl_gnu_driver_flags.patch
@@ -172,3 +174,7 @@ new	-	bazel/public-patches/rules_mojo_copy_dlls_to_binary.patch
 new	-	bazel/public-patches/rules_mojo_windows_libpython.patch
 new	-	bazel/public-patches/rules_mypy_types_exec.patch
 new	-	bazel/public-patches/zlib_ng_gnu_driver_copts.patch
+new	-	bazelw.bat
+new	-	bazelw.ps1
+new	-	tools/bazel-wrapper.ps1
+new	-	tools/bazel.bat

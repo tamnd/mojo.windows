@@ -21,7 +21,8 @@ info "$COUNT files in the overlay"
 if [ "$COUNT" -gt 0 ]; then
   listed="$(mktemp)"
   present="$(mktemp)"
-  trap 'rm -f "$listed" "$present"' EXIT
+  ignored="$(mktemp)"
+  trap 'rm -f "$listed" "$present" "$ignored"' EXIT
 
   while IFS=$'\t' read -r state blob path; do
     case "$state" in
@@ -48,6 +49,21 @@ if [ "$COUNT" -gt 0 ]; then
   fi
 
   ( cd "$OVERLAY_DIR" && find . -type f ! -name MANIFEST | sed 's|^\./||' ) | LC_ALL=C sort > "$present"
+
+  # A file git would refuse to commit is not part of the overlay, whatever it is doing on
+  # disk. The one that turns up in practice is the __pycache__ directory the interpreter
+  # writes next to the toolchain drivers the first time anything imports one of them.
+  # Skipped when there is no repository, which is how this runs from a release archive.
+  if git -C "$OVERLAY_DIR" rev-parse --git-dir > /dev/null 2>&1; then
+    (
+      cd "$OVERLAY_DIR" || exit 1
+      # check-ignore exits 1 when it matched nothing, which is the ordinary case.
+      git check-ignore --stdin < "$present" || true
+    ) | LC_ALL=C sort > "$ignored"
+    LC_ALL=C comm -23 "$present" "$ignored" > "$listed.present"
+    mv "$listed.present" "$present"
+  fi
+
   if ! extra="$(LC_ALL=C comm -13 "$listed" "$present")" || [ -n "$extra" ]; then
     printf '%s\n' "$extra" >&2
     note "those files are under overlay/ but not in the manifest, so sync.sh will not apply them"
