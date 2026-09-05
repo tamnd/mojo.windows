@@ -89,6 +89,7 @@ The full explanation, including why this shape over a fork, a submodule or a sub
 | [docs/roadmap.md](docs/roadmap.md) | Milestones M0 to M8 and rough effort |
 | [docs/releasing.md](docs/releasing.md) | What a version means, what is in a release, how one is cut |
 | [docs/downloading.md](docs/downloading.md) | Running a release, checksums, SmartScreen and antivirus |
+| [docs/acceptance.md](docs/acceptance.md) | The manual checklist run before a release, and the last result |
 
 ## Contributing
 

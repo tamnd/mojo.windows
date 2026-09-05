@@ -82,7 +82,7 @@ Nothing here is optional for a release that contains binaries. Run all of it on 
 2. Tier 0 and tier 1, `scripts/test-tier.sh 0` and `scripts/test-tier.sh 1`, against the Windows configuration. Compare against the failures recorded for the previous release rather than against zero, and account for every difference in both directions.
 3. The same two tiers on Linux, unchanged from the previous release. A Windows change that regresses Linux is a change that can never go anywhere.
 4. `mojo build` on `Mojo/examples/windows-hello`, and run the result by double clicking it in Explorer rather than from a shell, because that is how the SmartScreen and antivirus behaviour shows up.
-5. The acceptance checklist in issue #29, which is the things only a person sitting in front of the machine can see, console colour among them.
+5. [The acceptance checklist](acceptance.md), which is the archive as a user gets it and the things only a person sitting in front of the machine can see. Record the result of every item, including the ones that cannot be checked yet.
 
 Write the result of 2 and 3 into the release notes as counts. "Tier 0, 232 of 235" is a number the next person can diff against. "Tier 0 green" is not.
 
