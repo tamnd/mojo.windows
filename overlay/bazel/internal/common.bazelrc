@@ -152,7 +152,19 @@ build --modify_execution_info=CcLtoBackendCompile=+supports-path-mapping
 build --modify_execution_info=CppCompile=+supports-path-mapping
 build --modify_execution_info=CppModuleMap=+supports-path-mapping
 build --modify_execution_info=Objc.*=+supports-path-mapping
-build --experimental_output_paths=strip
+#
+# Split per host, because Bazel only implements path mapping for a spawn that runs
+# sandboxed or remotely and there is no sandbox on Windows. Left on there, every C++
+# compile in the tree refuses to run, after analysis has already succeeded, with a
+# message blaming the strategy flags for being too strict. Nothing is too strict. The
+# two strategies a Windows host has are the only two it can have and neither of them
+# can do path mapping, so the requirement can never be met. Written as two host keyed
+# lines rather than a windows arm that turns it back off, so that it does not matter
+# where --enable_platform_specific_config at the top of this file inserts the config.
+# The cost is that a Windows host rebuilds C++ across a configuration change that
+# would have been free elsewhere. docs/building.md says so.
+build:linux --experimental_output_paths=strip
+build:macos --experimental_output_paths=strip
 
 # These are required to avoid issues caused by dynamic linking on OS X, which
 # is documented in detail here: https://github.com/sorbet/sorbet/issues/1281
