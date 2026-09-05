@@ -75,10 +75,27 @@ fi
 #    here, because writing them down would itself put them in a public repository. Set
 #    PRIVATE_HOST_PATTERN to an extended regex to check for them, which CI does from a
 #    repository secret. Without it we still catch the generic shapes.
+#
+#    The two pip lock files are generated and they are full of resolved package versions
+#    with four dot separated numbers, and some of those are indistinguishable from a
+#    private address. The nvidia curand package is the one that bites. Nothing in the text
+#    tells a version and an address apart, so those two are scanned for an address used as
+#    a host instead, with a scheme in front of it or a port behind it. That is the shape a
+#    leak takes in a file that is a list of download URLs.
+PRIVATE_IP='(10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}'
+GENERATED_LOCKS="bazel/pip/requirements/pycross_lock_file.bzl
+bazel/pip/requirements/uv.lock"
 if [ "$COUNT" -gt 0 ]; then
-  if grep -rnE '\b(10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}\b' "$OVERLAY_DIR"; then
+  if grep -rnE "\\b$PRIVATE_IP\\b" \
+    --exclude=pycross_lock_file.bzl --exclude=uv.lock "$OVERLAY_DIR"; then
     note "the overlay contains a private IP address"
   fi
+  for lock in $GENERATED_LOCKS; do
+    [ -f "$OVERLAY_DIR/$lock" ] || continue
+    if grep -nE "//$PRIVATE_IP\\b|\\b$PRIVATE_IP:[0-9]" "$OVERLAY_DIR/$lock"; then
+      note "the overlay contains a private IP address"
+    fi
+  done
   if grep -rnE 'BEGIN (RSA|OPENSSH|EC|PGP) PRIVATE KEY|ssh-(rsa|ed25519) AAAA' "$OVERLAY_DIR"; then
     note "the overlay contains key material"
   fi

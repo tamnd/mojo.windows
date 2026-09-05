@@ -66,9 +66,24 @@ jobs:
           fail=0
           scan() { grep -rnE "$1" --exclude-dir=.git --exclude-dir=.upstream . && return 0 || return 1; }
 
-          if scan '\b(10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}\b'; then
+          # The two pip lock files under overlay/ are generated, and the resolved package
+          # versions in them have exactly the shape of a private address. Nothing in the
+          # text tells a version and an address apart, so those two are scanned for an
+          # address used as a host instead, with a scheme in front or a port behind, which
+          # is the shape a leak takes in a file that is a list of download URLs. Same rule
+          # as scripts/check-overlay.sh, and docs/upstream.md says why.
+          ip='(10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}'
+          if grep -rnE "\b$ip\b" --exclude-dir=.git --exclude-dir=.upstream \
+            --exclude=pycross_lock_file.bzl --exclude=uv.lock . ; then
             echo "::error::a private IP address is in the tree"; fail=1
           fi
+          for lock in overlay/bazel/pip/requirements/pycross_lock_file.bzl \
+                      overlay/bazel/pip/requirements/uv.lock; do
+            [ -f "$lock" ] || continue
+            if grep -nE "//$ip\b|\b$ip:[0-9]" "$lock"; then
+              echo "::error::a private IP address is in the tree"; fail=1
+            fi
+          done
           if scan 'BEGIN (RSA|OPENSSH|EC|PGP) PRIVATE KEY|ssh-(rsa|ed25519) AAAA'; then
             echo "::error::key material is in the tree"; fail=1
           fi

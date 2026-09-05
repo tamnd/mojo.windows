@@ -164,6 +164,11 @@ edit	4e7575d34ad20d592013a888c5cd56b37d372a48	bazel/internal/runtool-shim.cpp
 new	-	bazel/internal/windows-argv.ps1
 new	-	bazel/internal/windows-math-fixups.c
 edit	769b5db911206bbaaa73acad4e5338a32f58f714	bazel/modular_wheel_repository.bzl
+edit	f0642143383e9018d690ffb2cf588c39b44b465a	bazel/pip/pycross/pip_platform.py
+edit	952702c16daed7347e61643cd93f7b18f096ff25	bazel/pip/pycross/template.py
+edit	4913f134a0405abf9f0dc46747148e89b02dda24	bazel/pip/requirements/pycross_lock_file.bzl
+edit	d6e94f34c31a74c90a998d3707a5428faea2ea79	bazel/pip/requirements/pyproject.toml
+edit	91f41e66e13f184d033f3845b9443653d362c023	bazel/pip/requirements/uv.lock
 new	-	bazel/public-patches/boringssl_gnu_driver_flags.patch
 new	-	bazel/public-patches/clang-windows.BUILD
 edit	5c97c045b3cd8aa6e59aa4706665ee70e85ac8ca	bazel/public-patches/crashpad.BUILD

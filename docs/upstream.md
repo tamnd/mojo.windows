@@ -90,6 +90,21 @@ If every file merges cleanly, it opens a pull request that updates `upstream.loc
 
 If a file conflicts, it does not touch anything. It opens or updates a single tracking issue labelled `upstream-drift` naming what it tried and what did not merge. One issue, updated in place, so a month of failed bumps is one notification and not four.
 
+### Two files that are generated, not merged
+
+`bazel/pip/requirements/pycross_lock_file.bzl` and `bazel/pip/requirements/uv.lock` are in the overlay and they are the only two files in it that a program writes. Together they are about fifty thousand lines of resolved dependency graph, and our change to them is not a change to their text, it is a change to the inputs that produce them. Merging them on a bump is meaningless work that produces a file no resolver would ever emit.
+
+So on a bump, do not merge those two. Take upstream's version of both, then regenerate:
+
+```sh
+git -C .upstream/modular checkout -- bazel/pip/requirements/pycross_lock_file.bzl bazel/pip/requirements/uv.lock
+cd .upstream/modular && bazel run //bazel/pip/requirements:update_requirements
+```
+
+The checkout is not optional and it is not tidiness. `//bazel/pip/requirements:update_requirements` is itself analysed under the mypy aspect, and the aspect reads the lock file, so a lock file that is broken or half merged blocks the one target that would fix it. Revert first, regenerate second. The four real inputs are `bazel/pip/requirements/pyproject.toml`, `bazel/common.MODULE.bazel`, `bazel/pip/pycross/pip_platform.py` and `bazel/pip/pycross/template.py`, and those four merge normally like everything else.
+
+`scripts/check-overlay.sh` and the house style job treat these two specially in one other place. They list resolved package versions with four dot separated numbers, and some of those are indistinguishable from a private address, so the private IP scan looks in them for an address used as a host rather than for the bare four numbers. Everything else in the tree is scanned as before.
+
 ## Why the pin follows main and not release tags
 
 It should follow release tags. Chasing nightlies means constant small breakage for no benefit while the port is still being built, and a tag is a much better thing to reproduce against than a moving branch. That was the original design and it is what this document used to say.
