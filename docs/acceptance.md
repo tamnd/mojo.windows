@@ -20,7 +20,7 @@ Record the result of each item in the release notes or in the milestone issue. A
 
 5. **Ctrl-C interrupts a running program without orphaning child processes.** Needs a person at a real console. Console control events are delivered to a process group attached to a console, so this cannot be checked over a remote shell in any way that means anything.
 
-6. **A crash produces a usable stack trace.** Build something that faults, run it, and see what comes out. What we want is a symbolised trace. What we have is recorded below.
+6. **A crash produces a usable stack trace.** Build something that faults, run it, and see what comes out. Check more than one kind of fault. A null store and a stack overflow go through the same handler and do not behave the same way, and checking only the easy one is how this item got recorded wrong the first time.
 
 7. **A program built for Windows runs on a machine with no SDK and no redistributable installed.** The C runtime is linked statically, so the check is the import table: `hello.exe` should import `KERNEL32.dll` and the Mojo runtime and nothing else. Anything else in that list is a dependency somebody has to install first, which is the thing static linking was chosen to avoid.
 
@@ -40,7 +40,7 @@ First end to end run, against the published `mojo-windows-runtime-0.4.2-x86_64.z
 
 5. **Not run.** Needs a person at a console and there is no long running program in the archive to interrupt anyway.
 
-6. **Fail, and it is worse than expected.** A program built with `mojo build -g -O0` that recurses without a base case dies with exit code `0xC0000005` and prints nothing at all. No stack trace, no message, no indication of what happened. Two things in that are worth separating. There is no crash handler in a Windows binary, which is the checklist item and is the smaller half. The other half is that unbounded recursion should raise `STATUS_STACK_OVERFLOW`, `0xC00000FD`, and it raised an access violation instead, which is what happens when a frame is large enough to step over the guard page without touching it. That points at missing stack probes in the generated code rather than at anything to do with reporting. Filed as #239 and #238.
+6. **Pass for an ordinary fault, fail for a stack overflow.** A null store built with `mojo build -g` prints an exception code and a symbolised frame list naming `__mojo_main_prototype` and the line in `_startup.mojo`, which is what this item asks for. Unbounded recursion built the same way prints nothing at all and exits with `0xC0000005`. An exception filter runs on the stack of the thread that faulted and a thread that has just overflowed its stack has none left, so the filter never starts. That is #239, and the fix is `SetThreadStackGuarantee`. Separately, unbounded recursion should raise `STATUS_STACK_OVERFLOW` and raised an access violation instead, which is what happens when a frame is large enough to step over the guard page without touching it, so it points at missing stack probes. That is #238.
 
 7. **Pass.** `hello.exe` imports `KERNEL32.dll` and `KGENCompilerRTShared.dll` and nothing else. The machine it ran on is not SDK free, so the import table rather than the machine is what settles this, and the import table is the stronger evidence of the two.
 
