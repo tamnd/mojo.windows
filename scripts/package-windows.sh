@@ -64,6 +64,12 @@ STAGE="$OUT_DIR/$NAME"
 # of hundred Windows test executables, which is several gigabytes of build tree
 # for debug information nobody reads. Here it applies to one build of three
 # shared libraries.
+# --remote_download_outputs=all because this script reads files out of the
+# output tree rather than only the ones the target names. The rc sets toplevel,
+# so a cached build materialises the three .dll files and leaves the .if.lib
+# next to each one in the cache, and then the copy below fails looking for an
+# import library that Bazel was never asked to put on disk. That it worked
+# before was luck: the files happened to still be there from an earlier build.
 # The comma in -Wl,/DEBUG is part of the flag, not a separator.
 # shellcheck disable=SC2054
 BAZEL_ARGS=(
@@ -71,6 +77,7 @@ BAZEL_ARGS=(
   --config=windows-cross
   "--repo_env=MOJO_WINDOWS_SYSROOT=$SYSROOT"
   --linkopt=-Wl,/DEBUG
+  --remote_download_outputs=all
 )
 
 TARGET="//Mojo/examples/windows-hello:hello"
@@ -110,8 +117,13 @@ for rel in "${FILES[@]}"; do
       lib="$(dirname "$real")/$stem.if.lib"
       [ -f "$lib" ] || die "no import library next to $base, looked for $stem.if.lib"
       cp "$lib" "$STAGE/lib/$stem.lib"
+      # Same shape as the import library above, so the same treatment. The build
+      # asks for -Wl,/DEBUG, so a missing .pdb means something went wrong rather
+      # than that debug information was not wanted, and the way it used to show
+      # up was a -pdb.zip that quietly did not get made.
       pdb="$(dirname "$real")/$stem.pdb"
-      [ -f "$pdb" ] && cp "$pdb" "$PDB_STAGE/$stem.pdb"
+      [ -f "$pdb" ] || die "no debug information next to $base, looked for $stem.pdb"
+      cp "$pdb" "$PDB_STAGE/$stem.pdb"
       ;;
     *.exe)
       cp "$real" "$STAGE/bin/$base"
@@ -163,13 +175,9 @@ https://github.com/tamnd/mojo.windows
 EOF
 
 info "packing"
-archives=("$NAME.zip")
+archives=("$NAME.zip" "$NAME-pdb.zip")
 (cd "$OUT_DIR" && zip -qr "$NAME.zip" "$NAME")
-
-if [ -n "$(ls -A "$PDB_STAGE")" ]; then
-  (cd "$PDB_STAGE" && zip -qr "../$NAME-pdb.zip" .)
-  archives+=("$NAME-pdb.zip")
-fi
+(cd "$PDB_STAGE" && zip -qr "../$NAME-pdb.zip" .)
 rm -rf "$STAGE" "$PDB_STAGE"
 
 # SHA256SUMS-windows and not SHA256SUMS, because the release workflow already
