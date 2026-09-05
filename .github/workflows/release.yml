@@ -117,6 +117,9 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/SHA256SUMS
+          # Paragraphs are one line each and not hard wrapped. A block scalar keeps every
+          # newline it is given, so a wrapped source paragraph comes out wrapped in the
+          # browser, which is not how anything else on the page reads.
           body: |
             Unofficial community build. Not affiliated with Modular or Qualcomm.
 
@@ -128,12 +131,8 @@ jobs:
             gh attestation verify <file> --repo ${{ github.repository }}
             ```
 
-            The overlay archives are built by CI and carry a provenance attestation. The
-            Windows archives, if this release has any, do not. CI cannot build them: that
-            needs a Windows sysroot and hours of Bazel, so they are cross compiled on a
-            known machine and uploaded by hand, and the checksums are what there is to
-            check them against. docs/releasing.md says how they were made.
+            The overlay archives are built by CI and carry a provenance attestation. The Windows archives, if this release has any, do not. CI cannot build them: that needs a Windows sysroot and hours of Bazel, so they are cross compiled on a known machine and uploaded by hand, and the checksums are what there is to check them against. docs/releasing.md says how they were made.
 
-            Releases are drafted rather than published automatically. Fill in what works
-            and what does not before you publish, because that list is the most useful
-            part of the notes.
+            The Windows binaries are unsigned, so Windows will warn about them the first time you run one from Explorer. That is expected. docs/downloading.md says what the warning looks like, what decides whether you see it at all, and how to get past it.
+
+            Releases are drafted rather than published automatically. Fill in what works and what does not before you publish, because that list is the most useful part of the notes.

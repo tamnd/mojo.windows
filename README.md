@@ -22,6 +22,12 @@ Two things degrade rather than fail below that line. Console colour needs virtua
 
 No Visual C++ redistributable is needed. Both link paths use the static C runtime, so `hello.exe` imports `KERNEL32.dll` and `KGENCompilerRTShared.dll` and nothing else. The DLL runtime would have meant `VCRUNTIME140.dll` on the target machine, which is on most of them and guaranteed on none, and that is not a thing to make somebody install before a downloaded binary will start.
 
+## Windows will warn about the download
+
+The binaries are unsigned and published by somebody Windows has never heard of, so double clicking `hello.exe` in Explorer raises the SmartScreen dialog, "Windows protected your PC", with the Run anyway button hidden behind More info. That is expected, it is not a symptom of a broken build, and it is not something a rebuild fixes. Check the SHA-256 against `SHA256SUMS-windows` in the release, which is the thing that actually tells you what you have, and then run it.
+
+One wrinkle worth knowing: whether you see that dialog at all depends on how you unpacked the zip. Explorer copies the mark of the web onto every file it extracts and `Expand-Archive` in PowerShell does not, so the same download behaves differently for two people. [docs/downloading.md](docs/downloading.md) has the detail, along with what Defender made of the archive and why nothing here is signed.
+
 ## Why this exists
 
 Mojo was open sourced in August 2026 under Apache 2.0 with LLVM Exceptions, which makes the compiler modifiable for the first time. Modular has announced a partnership with Microsoft for Windows support but has not published a date or a design. So the only way to get Mojo running on Windows right now is to change it yourself.
@@ -82,6 +88,7 @@ The full explanation, including why this shape over a fork, a submodule or a sub
 | [docs/building.md](docs/building.md) | Cross compiling from Linux, toolchain and sysroot |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones M0 to M8 and rough effort |
 | [docs/releasing.md](docs/releasing.md) | What a version means, what is in a release, how one is cut |
+| [docs/downloading.md](docs/downloading.md) | Running a release, checksums, SmartScreen and antivirus |
 
 ## Contributing
 
