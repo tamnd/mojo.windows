@@ -3,9 +3,10 @@
 # A separate file rather than a suffix in the other one because the two describe
 # archives from different publishers. The three Unix clangs are Modular's own
 # builds, and this is the stock llvm-project release, so the layouts agree today
-# by coincidence and there is nothing keeping them in step. Writing the names
-# out here means a layout change in either archive shows up as a missing file
-# with a path in the message rather than as an empty glob.
+# by coincidence and there is nothing keeping them in step. Naming the files one
+# by one wherever that is practical means a layout change in either archive
+# shows up as a missing file with a path in the message rather than as an empty
+# glob.
 #
 # Everything below is the same as clang.BUILD except that the executables are
 # named with .exe, which is what they are called on disk and what a cc_tool has
@@ -33,12 +34,13 @@ filegroup(
     srcs = glob(["bin/*ld*"]),
 )
 
+# Globbed for the reason given against the same rule in clang.BUILD.
 filegroup(
     name = "include",
-    srcs = [
-        "lib/clang/22/include",
-        "lib/clang/22/share",  # sanitizer default ignore lists
-    ],
+    srcs = glob([
+        "lib/clang/22/include/**",
+        "lib/clang/22/share/**",  # sanitizer default ignore lists
+    ]),
 )
 
 directory(

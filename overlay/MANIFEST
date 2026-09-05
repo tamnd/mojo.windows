@@ -140,6 +140,7 @@ edit	e32d05dbfeb2fb90cf87d1a231f32f84b92e52cb	bazel/internal/cc-toolchain/args/m
 edit	0161f0e54c9bd94f9bbf1300995f05281ec9e38a	bazel/internal/cc-toolchain/features/features.bzl
 new	-	bazel/internal/cc-toolchain/host_clang_repository.bzl
 edit	97703532c465ffe3d7b8ab8f20ed36c2a84c53d9	bazel/internal/cc-toolchain/tools/BUILD.bazel
+edit	7639ae60093d8a5b334f240beb9a412bb77b26e8	bazel/internal/cc-toolchain/tools/builtin_module_map.bzl
 new	-	bazel/internal/cc-toolchain/tools/linker-driver.py
 delete	bbd8b61acf0020064c89e9eb1280984530b887e0	bazel/internal/cc-toolchain/tools/linker-driver.sh
 new	-	bazel/internal/cc-toolchain/tools/multi-platform-clang++.py
@@ -172,6 +173,7 @@ edit	d6e94f34c31a74c90a998d3707a5428faea2ea79	bazel/pip/requirements/pyproject.t
 edit	91f41e66e13f184d033f3845b9443653d362c023	bazel/pip/requirements/uv.lock
 new	-	bazel/public-patches/boringssl_gnu_driver_flags.patch
 new	-	bazel/public-patches/clang-windows.BUILD
+edit	2d31d8cec964928e2dce710017e9021c24c9e61a	bazel/public-patches/clang.BUILD
 edit	5c97c045b3cd8aa6e59aa4706665ee70e85ac8ca	bazel/public-patches/crashpad.BUILD
 new	-	bazel/public-patches/curl_gnu_driver_flags.patch
 new	-	bazel/public-patches/google_benchmark_gnu_driver_flags.patch
