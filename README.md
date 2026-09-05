@@ -6,7 +6,7 @@ Native Windows support for the Mojo compiler and standard library, maintained as
 
 ## Status
 
-Early, but past the interesting part. A Mojo program cross compiled from Linux produces a `hello.exe` that runs on Windows 11 and prints, and the standard library tiers behind it are green: tier 0 is 232 of 238 on Windows and tier 1 is 74 of 77, with the Win64 ABI conformance suite at thirteen of thirteen. `//Mojo/examples/windows-hello:hello` is that program and [docs/building.md](docs/building.md) has the command. What is not done is packaging, so there are no binaries to download yet, and building on Windows rather than for it.
+Early, but past the interesting part. A Mojo program cross compiled from Linux produces a `hello.exe` that runs on Windows 11 and prints, and the standard library tiers behind it are green: tier 0 is 232 of 238 on Windows and tier 1 is 74 of 77, with the Win64 ABI conformance suite at thirteen of thirteen. `//Mojo/examples/windows-hello:hello` is that program and [docs/building.md](docs/building.md) has the command. From v0.4.2 it is also on the [releases page](https://github.com/tamnd/mojo.windows/releases) as a zip with the runtime, the import libraries and checksums, so you can download it and run it without building anything. What is not done is building on Windows rather than for it, so there is no `mojo.exe` in that zip and nothing to compile with on the machine yet.
 
 Track progress on the [milestones](https://github.com/tamnd/mojo.windows/milestones).
 
@@ -81,6 +81,7 @@ The full explanation, including why this shape over a fork, a submodule or a sub
 | [docs/upstream.md](docs/upstream.md) | Pinning, the overlay, rebasing onto a newer upstream |
 | [docs/building.md](docs/building.md) | Cross compiling from Linux, toolchain and sysroot |
 | [docs/roadmap.md](docs/roadmap.md) | Milestones M0 to M8 and rough effort |
+| [docs/releasing.md](docs/releasing.md) | What a version means, what is in a release, how one is cut |
 
 ## Contributing
 

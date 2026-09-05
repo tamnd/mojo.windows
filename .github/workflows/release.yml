@@ -1,9 +1,10 @@
 name: Release
 
-# Until M5 there are no binaries, so a release is the overlay plus the documents,
-# which is genuinely the useful artifact right now. The provenance attestation and the
-# checksums are wired up from the start so that the first binary release does not have
-# to invent them under time pressure.
+# What this workflow builds is the overlay plus the documents, with checksums and a
+# provenance attestation. The Windows binaries are not built here and cannot be: they
+# need a Windows sysroot and a Bazel build measured in hours, so scripts/package-windows.sh
+# produces them on a machine that has both and they are uploaded to the draft by hand.
+# docs/releasing.md is the procedure and says why the split is where it is.
 
 on:
   push:
@@ -123,8 +124,15 @@ jobs:
 
             ```sh
             sha256sum -c SHA256SUMS
+            sha256sum -c SHA256SUMS-windows
             gh attestation verify <file> --repo ${{ github.repository }}
             ```
+
+            The overlay archives are built by CI and carry a provenance attestation. The
+            Windows archives, if this release has any, do not. CI cannot build them: that
+            needs a Windows sysroot and hours of Bazel, so they are cross compiled on a
+            known machine and uploaded by hand, and the checksums are what there is to
+            check them against. docs/releasing.md says how they were made.
 
             Releases are drafted rather than published automatically. Fill in what works
             and what does not before you publish, because that list is the most useful

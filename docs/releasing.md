@@ -36,9 +36,41 @@ Cut one when every issue in a milestone is closed and the milestone tracking iss
 
 ## What is in a release
 
-Until M5 there are no binaries. A release is the overlay plus the pin, so the artifact is the source tarball that GitHub generates automatically plus the release notes. From M5 there is a zip with checksums and build provenance, which is issue #27.
+Two sets of files, made in two different places.
 
-The point of tagging before there are binaries is that `upstream.lock` plus `overlay/` at a tag is a complete and reproducible description of a tree. Anybody can check out the tag, run `./scripts/sync.sh` and get exactly what we had.
+The overlay archives, `mojo-windows-overlay-<version>.tar.gz` and `.zip`, are built by `.github/workflows/release.yml` when the tag is pushed. They hold `overlay/`, `scripts/`, `docs/`, the pin and the licence files, which is a complete and reproducible description of a tree: check out the tag, run `./scripts/sync.sh` and you have exactly what we had. Their checksums are in `SHA256SUMS` and they carry a provenance attestation.
+
+The Windows archives, `mojo-windows-runtime-<version>-x86_64.zip` and the matching `-pdb.zip`, are built by `scripts/package-windows.sh` and uploaded to the draft by hand. Their checksums are in `SHA256SUMS-windows`. They are not attested, and the next section is why.
+
+The point of tagging before there were binaries at all was that the overlay archives were already the useful artifact. That has not changed. The binaries are an addition, not a replacement.
+
+## The Windows archives
+
+Cross compiled from Linux, because there is no Windows build of the compiler yet. That is also why there is no `mojo.exe` in the archive: what a user can download today is the runtime a Mojo program needs and one program that uses it, and the toolchain arrives with native hosting in M6.
+
+```sh
+./scripts/package-windows.sh --version 0.4.2
+```
+
+That builds `//Mojo/examples/windows-hello:hello` for Windows with `--linkopt=-Wl,/DEBUG`, then lays the result out like this.
+
+```
+bin/hello.exe                 the example, cross compiled
+bin/*.dll                     the runtime
+lib/*.lib                     the import libraries
+example/hello.mojo            the source bin/hello.exe was built from
+LICENSE NOTICE README.txt upstream.lock
+```
+
+The DLLs sit in `bin/` next to the executable and not in `lib/` next to their own import libraries. That looks untidy and it is the only layout that works: Windows looks for a DLL beside the program before anywhere else and does not look in a sibling directory at all, so the tidy split produces an example that fails to start with `0xC0000135` and no message. That was tried, and finding out that way is the reason it is written down here.
+
+Two files that are easy to lose and both are checked by the script rather than by eye. A shared library on Windows is a `.dll` and a `.lib`, and a packaging step written for a Unix `.so` drops the second without a word, so the script fails if an import library is not next to a DLL it is about to copy. Debug information goes in the separate `-pdb.zip` because a `.pdb` is several times the size of the binary it describes, so bundling them roughly quadruples a download that most people will never debug, and shipping none at all makes every crash report useless.
+
+## Why the Windows archives have no provenance attestation
+
+`actions/attest-build-provenance` signs a statement that a particular GitHub Actions workflow produced a particular file. For the overlay archives that statement is true and worth having. For the Windows archives it would be a lie, because CI does not build them and cannot: the build needs a Windows sysroot and a Bazel run measured in hours, well past what a hosted runner will do. Uploading locally built files into a workflow and attesting them there would produce a signature that verifies and a claim that is false, which is worse than no signature.
+
+So what those archives get is checksums, the upstream pin inside the archive, and the release notes saying plainly where they were built. When native hosting lands and the build fits in CI, the attestation follows. Until then the honest thing is to say which files are attested and which are not, and the drafted release body does.
 
 ## The manual gate
 
@@ -62,6 +94,16 @@ Tag on `main`, push the tag, and the release workflow drafts the release. Fill i
 git tag -a v0.1.0 -m "M1 complete, a Windows targeted build passes analysis"
 git push origin v0.1.0
 ```
+
+If the release is meant to have binaries, build and attach them to the draft before publishing, from a checkout of the tag on a machine with a Windows sysroot.
+
+```sh
+./scripts/package-windows.sh --version 0.1.0
+gh release upload v0.1.0 dist/mojo-windows-runtime-0.1.0-x86_64.zip \
+  dist/mojo-windows-runtime-0.1.0-x86_64-pdb.zip dist/SHA256SUMS-windows
+```
+
+Then unpack the zip on a Windows machine and run `bin\hello.exe` from it before publishing. Not the one it was built on, if there is a choice, because that machine has the sysroot and everything else on it and is the least likely to notice a missing dependency.
 
 ## Release notes
 
