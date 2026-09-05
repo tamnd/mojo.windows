@@ -75,6 +75,41 @@ if (-not (Test-Path -LiteralPath $executable)) {
   }
 }
 
+# .bazelversion names a fork of Bazel that BuildBuddy publishes, and that
+# release has darwin and linux assets and nothing for Windows, so bazelisk gets
+# a 404 and the build stops before it has started. What Windows runs instead is
+# the stock Bazel release the fork is built from, which is not a guess: the
+# linux asset of buildbuddy-io/5.0.382 answers --version with "bazel 9.2.0".
+# So the Windows lane is the same Bazel release as every other lane without
+# BuildBuddy's patches on top, which is a smaller difference than either of the
+# alternatives, those being asking BuildBuddy to publish a Windows asset or
+# building and hosting the fork ourselves. See #243.
+#
+# The mapping is checked rather than assumed. If the pin moves and .bazelversion
+# changes, this stops and asks somebody to measure the new one instead of
+# quietly running a Bazel nobody has looked at.
+$pinnedFork = "buildbuddy-io/5.0.382"
+$stockForPinnedFork = "9.2.0"
+
+if (-not $env:USE_BAZEL_VERSION) {
+  $bazelVersionFile = Join-Path $PSScriptRoot ".bazelversion"
+  if (Test-Path -LiteralPath $bazelVersionFile) {
+    # Only the first line, which is all bazelisk reads. The second line of that
+    # file is a bazelbuild commit and nothing in this repository consumes it.
+    $requested = "$(Get-Content -LiteralPath $bazelVersionFile -TotalCount 1)".Trim()
+    if ($requested -eq $pinnedFork) {
+      $env:USE_BAZEL_VERSION = $stockForPinnedFork
+      [Console]::Error.WriteLine("note: $requested has no Windows build, using Bazel $stockForPinnedFork instead")
+    } elseif ($requested -like "*/*") {
+      # Some other fork. It may well publish a Windows asset, and it may well
+      # not, and either way nobody has checked what stock release it matches.
+      [Console]::Error.WriteLine("error: .bazelversion names $requested, which nobody has checked on Windows")
+      [Console]::Error.WriteLine("       run its linux asset with --version, put the answer in bazelw.ps1, and try again")
+      exit 1
+    }
+  }
+}
+
 # Set BAZEL to the executable path so the rules_go dependency can reference it.
 # Without this, rules_go will likely fail in CI with the following error:
 #   exec: "bazel": executable file not found in $PATH
