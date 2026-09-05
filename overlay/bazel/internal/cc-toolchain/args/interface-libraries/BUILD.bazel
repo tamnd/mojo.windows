@@ -47,7 +47,7 @@ cc_args(
     env = {
         "BUILD_IFS": "{generate_interface_library}",
     } | select({
-        # linker-driver.sh has to know which of the three ways of producing an
+        # linker-driver.py has to know which of the three ways of producing an
         # interface library applies, and the platform is not something it can work out
         # for itself: it runs on the host, and every one of these builds is a cross
         # build as far as the target is concerned. The Windows half of that answer is

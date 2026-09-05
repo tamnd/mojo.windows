@@ -286,7 +286,7 @@ cc_args(
         "//:modular_config_coverage": ["-fprofile-instr-generate"],
         "//conditions:default": [],
     }),
-    # linker-driver.sh strips the $ORIGIN rpath entries rules_cc generates for every
+    # linker-driver.py strips the $ORIGIN rpath entries rules_cc generates for every
     # directory a target's dynamic dependencies live in, because lld-link has no -rpath
     # and reads the path that follows it as an input file. The driver runs on the host
     # and cannot tell what it is linking for, so it needs to be told, and this is where
