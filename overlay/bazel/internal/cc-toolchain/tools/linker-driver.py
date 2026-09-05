@@ -70,6 +70,84 @@ def clang_root() -> str:
     return root
 
 
+def tokenize_param_file(text: str) -> list[str]:
+    """Splits a response file the way the tool that would have read it does.
+
+    This is the GNU tokenizer, which is what clang applies to @file and what
+    Bazel writes for it. Whitespace separates arguments, a backslash outside
+    quotes makes the next character literal, single quotes take their contents
+    literally, and double quotes take theirs with backslash escapes. Adjacent
+    runs join without a separator, so 'a'b is one argument and not two.
+
+    Written out rather than handed to shlex because shlex is a POSIX shell
+    lexer and this is not a shell. The differences are small and they are
+    exactly the ones that would corrupt a Windows path.
+    """
+    args: list[str] = []
+    current = ""
+    started = False
+    quote = ""
+    i = 0
+    while i < len(text):
+        char = text[i]
+        i += 1
+        if not quote and char.isspace():
+            if started:
+                args.append(current)
+                current = ""
+                started = False
+            continue
+        started = True
+        if char == "\\" and quote != "'" and i < len(text):
+            current += text[i]
+            i += 1
+        elif not quote and char in "'\"":
+            quote = char
+        elif char == quote:
+            quote = ""
+        else:
+            current += char
+    if started:
+        args.append(current)
+    return args
+
+
+def quote_for_param_file(arg: str) -> str:
+    """Writes one argument in a form the tokenizer above reads back unchanged.
+
+    Single quotes around everything, which is the one form with no escapes
+    inside it, and the usual trick for an embedded single quote: close, escape
+    it, reopen. Doing this to every argument rather than only the ones that need
+    it keeps the rule simple enough to be obviously right.
+    """
+    return "'" + arg.replace("'", "'\\''") + "'"
+
+
+def expand_param_files(argv: list[str]) -> tuple[list[str], str]:
+    """Replaces @file with what is in it, and says which file that was.
+
+    Everything below reads the link line argument by argument, to find our own
+    --modular- options and to rewrite the ones lld-link will not take, so a
+    command line that has been folded into a response file has to be unfolded
+    first or none of it happens. The one that came in is named back to the
+    caller so the rewritten line can be folded up again the same way.
+
+    Only one, because Bazel writes one and does not nest them. An argument that
+    starts with @ and does not name a file is left alone, since that is a real
+    argument and not a response file.
+    """
+    expanded: list[str] = []
+    param_file = ""
+    for arg in argv:
+        if arg.startswith("@") and os.path.isfile(arg[1:]):
+            param_file = arg[1:]
+            with open(param_file, encoding="utf-8") as handle:
+                expanded.extend(tokenize_param_file(handle.read()))
+        else:
+            expanded.append(arg)
+    return expanded, param_file
+
+
 def split_args(argv: list[str]) -> Options:
     """Pulls our own arguments out of what is otherwise a clang command line."""
     ifs_input = ""
@@ -234,6 +312,7 @@ def build_interface_library(options: Options) -> int:
 
 def main(argv: list[str]) -> int:
     """Rewrites the link line if it has to, links, and cleans up after."""
+    argv, param_file = expand_param_files(argv)
     options = split_args(argv)
     windows = os.environ.get("WINDOWS") == "true"
     build_ifs = os.environ.get("BUILD_IFS") == "yes"
@@ -260,13 +339,34 @@ def main(argv: list[str]) -> int:
     root = clang_root()
     clang = os.path.join(root, "bin", "clang++" + EXE)
 
-    # Most links have nothing to do afterwards, so hand the process over rather
-    # than hold a second one open for the length of the link.
-    if not options.dsym_path and not (build_ifs and not windows):
-        if os.name == "posix":
-            os.execv(clang, [clang, *linker_args])
+    # Fold it back up if it arrived folded. The link line is in a response file
+    # because it does not fit on a command line, and it is no shorter now, so
+    # passing it back argument by argument would fail to start the process on
+    # the machine that needed the response file in the first place. Written
+    # beside the one Bazel wrote, which is somewhere already known to be
+    # writable, rather than in a temp directory that a strict action environment
+    # may well not have told us about.
+    rewritten = ""
+    if param_file:
+        rewritten = param_file + ".rewritten"
+        with open(rewritten, "w", encoding="utf-8") as handle:
+            handle.write(
+                "".join(quote_for_param_file(a) + "\n" for a in linker_args)
+            )
+        linker_args = ["@" + rewritten]
 
-    status = subprocess.run([clang, *linker_args]).returncode
+    # Most links have nothing to do afterwards, so hand the process over rather
+    # than hold a second one open for the length of the link. Not when a
+    # response file was written, since somebody has to be here to delete it.
+    nothing_after = not options.dsym_path and not (build_ifs and not windows)
+    if nothing_after and not rewritten and os.name == "posix":
+        os.execv(clang, [clang, *linker_args])
+
+    try:
+        status = subprocess.run([clang, *linker_args]).returncode
+    finally:
+        if rewritten:
+            os.unlink(rewritten)
     if status != 0:
         return status
 

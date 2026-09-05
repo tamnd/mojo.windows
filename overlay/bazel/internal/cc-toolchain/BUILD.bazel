@@ -6,10 +6,33 @@ load("@rules_cc//cc/toolchains:make_variable.bzl", "cc_make_variable")
 load("@rules_cc//cc/toolchains:toolchain.bzl", "cc_toolchain")
 load("@rules_cc//cc/toolchains/args:sysroot.bzl", "cc_sysroot")
 load("//bazel:config.bzl", "TOP_LEVEL_TAG")
+load("@host-clang//:host_clang.bzl", "HOST_IS_WINDOWS")
 load("//bazel/internal/cc-toolchain/features:features.bzl", "MARKER_FEATURES")  # buildifier: disable=bzl-visibility
 load("//bazel/internal/cc-toolchain/tools:tools.bzl", "PLATFORMS")  # buildifier: disable=bzl-visibility
 
 package(default_visibility = ["//visibility:public"])
+
+# Put the arguments in a file and hand the tool @file instead. Both names are
+# Bazel's own, read by the action builders rather than by anything in this file.
+# The compile one is a marker with no flags, so it is defined next to the other
+# markers, and the link one already exists in rules_cc with the flag that names
+# the file attached to it, so that is the one used here.
+#
+# Keyed on the host and not on the target, because what this is about is what the
+# machine running the action will accept as a command line. Windows has two
+# limits and the build is past both. CreateProcess takes 32767 characters, and
+# cmd.exe, which is where a .bat launcher goes through, takes 8191. Counted over
+# the compiler's own action graph, 413 of 5442 compiles and 13 of 690 archives
+# are past the cmd.exe limit, and all 16 links are, 11 of them past the
+# CreateProcess one as well. On a Windows host those actions cannot start.
+#
+# Off everywhere else on purpose. Nothing is broken there, and turning it on
+# would change the command line of every compile and link in the tree, which
+# costs everybody a full rebuild to fix a problem they do not have.
+PARAM_FILE_FEATURES = [
+    "//bazel/internal/cc-toolchain/features:compiler_param_file",
+    "@rules_cc//cc/toolchains/args/linker_param_file:feature",
+] if HOST_IS_WINDOWS else []
 
 cc_sysroot(
     name = "linux_sysroot_aarch64",
@@ -238,7 +261,7 @@ cc_args(
                 "//bazel/internal/cc-toolchain/features:copy_dynamic_libraries_to_binary",
             ],
             "//conditions:default": [],
-        }),
+        }) + PARAM_FILE_FEATURES,
         known_features = [
             # Only optional features need to be included here
             "//bazel/internal/cc-toolchain/features:asan",
@@ -267,6 +290,12 @@ cc_args(
         }),
         module_map = "//bazel/internal/cc-toolchain/tools:builtin_module_map",
         supports_header_parsing = True,
+        # The switch the link and archive param file features hang off. rules_cc
+        # defaults it to false and checks it before it looks at anything else, so
+        # with it off the two features are enabled and do nothing, which is what
+        # the first attempt at this looked like. See PARAM_FILE_FEATURES above for
+        # why it is the host and not the target that decides.
+        supports_param_files = HOST_IS_WINDOWS,
         tags = [TOP_LEVEL_TAG],  # Used below, unclear why this is needed
         tool_map = "//bazel/internal/cc-toolchain/tools:{}_tools".format(platform),
     )
