@@ -1,10 +1,55 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@host-clang//:host_clang.bzl", "HOST_IS_WINDOWS")
+load("@host-python//:host_python.bzl", "HOST_PYTHON")
 load("@rules_cc//cc/toolchains:tool.bzl", "cc_tool")
 load("//bazel:config.bzl", "TOP_LEVEL_TAG")
 load(":builtin_module_map.bzl", "builtin_module_map")
 load(":tools.bzl", "declare_tools")
 
 package(default_visibility = ["//visibility:public"])
+
+# The three drivers are Python scripts and a Windows host cannot spawn one. There is no
+# shebang on Windows, and CreateProcess refuses a .py whatever the file association
+# says, so the action does not fail, it fails to start:
+#
+#     CreateProcessW("...\\multi-platform-clang++.py" -DNOMINMAX ...):
+#     %1 is not a valid Win32 application. (error: 193)
+#
+# So each one gets a .bat beside it naming an interpreter, and that is what the cc_tool
+# points at on a Windows host. Bazel does know how to start a .bat, through cmd.exe.
+#
+# The interpreter is written in as an absolute path because the action's PATH will not
+# find it. --incompatible_strict_action_env is set upstream, so an action gets system32,
+# windows, wbem and powershell and nothing else, and no Python installer puts anything
+# in any of them. host_python_repository.bzl is what resolves it and says more.
+#
+# The script is named by its path from the execroot, which is the directory an action
+# runs in, rather than by %~dp0 relative to the .bat. The .bat is generated and so lives
+# under bazel-out while the script it runs is a source file, so the two are not actually
+# beside each other and the obvious spelling would look right and be wrong.
+_DRIVERS = [
+    "multi-platform-clang",
+    "multi-platform-clang++",
+    "linker-driver",
+]
+
+[
+    write_file(
+        name = "{}-launcher".format(driver),
+        out = "{}.bat".format(driver),
+        content = [
+            "@echo off",
+            '"{}" "{}\\{}.py" %*'.format(
+                HOST_PYTHON,
+                package_name().replace("/", "\\"),
+                driver,
+            ),
+        ],
+        newline = "windows",
+        tags = ["manual"],
+    )
+    for driver in _DRIVERS
+] if HOST_IS_WINDOWS else []
 
 # Which clang runs when the target is Windows. Two machines can build a Windows
 # target now, a Linux x86_64 host cross compiling and a Windows host building
@@ -52,10 +97,23 @@ HOST_TOOLS = [
     "resource_directory_filegroup",
 ]
 
+# What the cc_tool below points at, and what has to travel with it. The .bat on a
+# Windows host, with the script it runs added as data so that it is in the action's
+# inputs. The script itself everywhere else, since everywhere else can start one.
+_DRIVER_SRC = {
+    driver: ":{}.bat".format(driver) if HOST_IS_WINDOWS else ":{}.py".format(driver)
+    for driver in _DRIVERS
+}
+
+_DRIVER_DATA = {
+    driver: [":{}.py".format(driver)] if HOST_IS_WINDOWS else []
+    for driver in _DRIVERS
+}
+
 cc_tool(
     name = "multi-platform-clang",
-    src = ":multi-platform-clang.py",
-    data = [
+    src = _DRIVER_SRC["multi-platform-clang"],
+    data = _DRIVER_DATA["multi-platform-clang"] + [
         "@clang-linux-aarch64//:bin/clang",
         "@clang-linux-x86_64//:bin/clang",
         "@clang-macos//:bin/clang",
@@ -65,8 +123,8 @@ cc_tool(
 
 cc_tool(
     name = "multi-platform-clang++",
-    src = ":multi-platform-clang++.py",
-    data = [
+    src = _DRIVER_SRC["multi-platform-clang++"],
+    data = _DRIVER_DATA["multi-platform-clang++"] + [
         "@clang-linux-aarch64//:bin/clang++",
         "@clang-linux-x86_64//:bin/clang++",
         "@clang-macos//:bin/clang++",
@@ -76,8 +134,8 @@ cc_tool(
 
 cc_tool(
     name = "multi-platform-linker_driver",
-    src = ":linker-driver.py",
-    data = [
+    src = _DRIVER_SRC["linker-driver"],
+    data = _DRIVER_DATA["linker-driver"] + [
         "@clang-linux-aarch64//:bin/clang",
         "@clang-linux-aarch64//:bin/clang++",  # symlink to clang
         "@clang-linux-aarch64//:bin/dsymutil",

@@ -27,6 +27,10 @@ host_clang_repository = use_repo_rule("//bazel/internal/cc-toolchain:host_clang_
 
 host_clang_repository(name = "host-clang")
 
+host_python_repository = use_repo_rule("//bazel/internal/cc-toolchain:host_python_repository.bzl", "host_python_repository")
+
+host_python_repository(name = "host-python")
+
 include("//bazel:mojo.MODULE.bazel")
 
 link_hack = use_repo_rule("//bazel/internal:link_hack.bzl", "link_hack")
