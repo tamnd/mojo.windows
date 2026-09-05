@@ -65,3 +65,25 @@ Against `mojo-windows-runtime-0.5.1-x86_64.zip` as built by `scripts/package-win
 7. **Pass.** `llvm-readobj --coff-imports` on `hello.exe` lists `KGENCompilerRTShared.dll` and `KERNEL32.dll` and nothing else.
 
 8. **Pass.** Defender scanned the unpacked archive with real time protection on, engine 1.1.26080.3, signatures 1.459.56.0, and left every file in place.
+
+## The v0.5.2 run
+
+Against `mojo-windows-runtime-0.5.2-x86_64.zip` as built by `scripts/package-windows.sh`, unpacked on the same machine as the previous two runs, Windows 11 26H1, build 10.0.28120. Still one machine, and still the machine that built it.
+
+Nothing in this release changes what is in the archive. Every change since v0.5.1 is build tooling for running the build on Windows rather than only targeting it, so the binaries here are the same programs from the same pin. The list was worked through anyway, because the point of a checklist is that it gets run and not that it gets reasoned about.
+
+1. **Not applicable.** Still no `mojo.exe`, so still no REPL. #251 got the cc toolchain resolving on a Windows host, which is a step toward one, but a resolving toolchain is not a compiler.
+
+2. **Unchanged, half outstanding.** Nothing has touched colour handling since v0.4.2. The mechanical half stands and nobody has yet sat in front of cmd.exe, PowerShell and Windows Terminal and judged how the colours read.
+
+3. **Pass.** Unpacked under `C:\tmp\rel052\café-日本`. `bin\hello.exe` printed `Hello from Mojo` and `built for Windows: True` and exited 0, both by absolute path and with the unpacked directory as the working directory.
+
+4. **Pass.** Unpacked under `C:\Program Files\mojo windows test 052` and ran the same two ways with the same output.
+
+5. **Not run.** Needs a person at a console, and there is still nothing long running in the archive to interrupt.
+
+6. **Not re-run.** Nothing in the runtime, the startup code or the exception handler changed since v0.4.2, so that result still describes what happens: an ordinary fault gives a usable trace and a stack overflow gives nothing. #238 and #239 are both still open.
+
+7. **Pass.** `llvm-readobj --coff-imports` on `hello.exe` lists `KGENCompilerRTShared.dll` and `KERNEL32.dll` and nothing else.
+
+8. **Pass.** Defender scanned the unpacked archive with real time protection on, engine 1.1.26080.3, signatures 1.459.56.0, and left all twelve files in place.
