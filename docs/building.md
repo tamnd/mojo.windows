@@ -220,6 +220,22 @@ What this is not is Bazel remote execution with a Windows executor, which is the
 
 Do not use Wine. It emulates the OS, so a failure is ambiguous between our bug and Wine's bug, which defeats the purpose when the thing you are validating is ABI conformance.
 
+### A lit test that needs the sysroot
+
+Most of the compiler's own lit tests need nothing but the compiler. One does not. `Mojo/test/kgen/kgen-tool/kgen-shared-lib-windows-sysroot.mlir` links a Windows shared library out of a module that calls a function it does not define, which is the case COFF cannot do at all unless the C runtime's import libraries are on the link line, so it needs a real CRT and SDK to link against and there is no way to ship one.
+
+It asks for the `windows-sysroot` lit feature and is reported as unsupported when that is missing, which is every machine that has not been set up on purpose. The feature is set when `MOJO_WINDOWS_SYSROOT` names a directory that really contains `crt/lib/x86_64` and `sdk/lib/ucrt/x86_64`, checked rather than believed, because pointing it at the xwin cache instead of the xwin output is a mistake that otherwise turns into a confusing link error.
+
+Getting it there needs `--test_env` and not `--repo_env`. Those are different variables to Bazel even though they are spelled the same. `--repo_env` is read while repository rules run and is how the cross compiling build finds the sysroot; a test action gets a scrubbed environment and inherits neither that nor the shell the build was started from.
+
+```sh
+./bazelw test --config=build-mojo \
+  --test_env=MOJO_WINDOWS_SYSROOT=/path/windows-sysroot.sh/printed \
+  //Mojo/test/kgen/...
+```
+
+That is a host build and not a cross build, which is not a mistake. The compiler under test runs on Linux and is asked for a Windows target with `--target-triple`, so nothing here has to run on Windows, and the artefact is inspected with `llvm-objdump` rather than executed. So this one runs in the same place everything else does, and the sysroot is the only thing it wants.
+
 ## Test tiers
 
 A pass percentage over the standard library test suite is close to useless as a progress signal. The suite is dominated by tests that never touch the operating system, so the number mostly measures whether the ABI is right, it moves by a fraction of a percent when something real lands, and it says nothing about which part of the port is stuck. `test-tiers.txt` splits the suite into four tiers instead, and the signal is "tier 1 is green", which is a claim someone can check.

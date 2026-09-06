@@ -35,6 +35,10 @@ _KNOWN_FEATURES = {
     "system-windows",
     "tsan",
     "ubsan",
+    # Set when MOJO_WINDOWS_SYSROOT names a directory that really holds a
+    # Windows CRT and SDK. Nothing can put one there for you, so a test that
+    # needs one asks for this and is skipped everywhere else.
+    "windows-sysroot",
     "x86_64-linux",
     "ASSERTIONS",
     "air-objdump",

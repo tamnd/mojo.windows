@@ -107,6 +107,7 @@ new	-	Mojo/test/abi-conformance/widths.mojo
 new	-	Mojo/test/kgen/kgen-tool/kgen-emit-shared-windows.mlir
 new	-	Mojo/test/kgen/kgen-tool/kgen-shared-lib-link-args.mlir
 new	-	Mojo/test/kgen/kgen-tool/kgen-shared-lib-runtime-import-lib.mlir
+new	-	Mojo/test/kgen/kgen-tool/kgen-shared-lib-windows-sysroot.mlir
 new	-	Mojo/test/kgen/pop-to-llvm/extern-c-abi-win64.mlir
 new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_cpu.mojo
@@ -162,6 +163,7 @@ new	-	bazel/internal/detect_local_resources.ps1
 new	-	bazel/internal/exec_tool.bzl
 edit	56ca80da56af127f244a23d82d928732ffa90751	bazel/internal/lit.bzl
 edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.bazel
+edit	b70eebdcb172c76aa5b9d334a125fa3e3b69d81b	bazel/internal/llvm-lit/lit.common.cfg.py
 edit	628de647178acb5de5fa6824e1a77ba303f5807c	bazel/internal/llvm-lit/validate_lit_features.py
 edit	968800b3e39de40eded9d1a4159c99415c2f6ada	bazel/internal/modular_shared_library.bzl
 edit	cedbc002df2a280bad77f4de603a073449fe858a	bazel/internal/modular_versioned_expand_template.bzl
