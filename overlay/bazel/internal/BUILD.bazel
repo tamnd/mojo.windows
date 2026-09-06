@@ -6,6 +6,7 @@ load("@rules_python//python:defs.bzl", "py_binary")
 load("//bazel:api.bzl", "modular_cc_binary", "modular_cc_library", "modular_py_binary", "modular_py_library", "modular_py_test", "requirement")
 load("//bazel:config.bzl", "TOP_LEVEL_TAG")
 load("//max/python/max:all_deps.bzl", "ALL_MAX_PYTHON_DEPS")
+load(":exec_tool.bzl", "exec_tool")
 load(":gpu_toolchain_alias.bzl", "gpu_toolchain_alias")
 load(":mojo_toolchain.bzl", "mojo_toolchain")
 
@@ -50,13 +51,24 @@ filegroup(
     srcs = ["pytest_runner.py"],
 )
 
+# Not depended on directly. exec_tool below is what everything else asks for, and it
+# pulls this in through an exec configuration edge so the select answers a question about
+# the machine running the build rather than the machine being built for. Depending on this
+# one straight from a target configuration attribute is how a cross build ends up handing
+# a Linux machine a uv.exe.
 alias(
-    name = "uv",
+    name = "uv_for_build_machine",
     actual = select({
         "//:linux_aarch64": "@uv_linux_aarch64//:uv",
         "//:linux_x86_64": "@uv_linux_x86_64//:uv",
+        "//:windows_x86_64": "@uv_windows_x86_64//:uv.exe",
         "@platforms//os:macos": "@uv_darwin_aarch64//:uv",
     }),
+)
+
+exec_tool(
+    name = "uv",
+    tool = ":uv_for_build_machine",
 )
 
 modular_py_library(

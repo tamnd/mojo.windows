@@ -156,6 +156,7 @@ edit	98ded8955b6427dd4803a4d3694dd11f4a617439	bazel/internal/common.bazelrc
 edit	edb67a035194ce0b99f28058a68828d923170991	bazel/internal/config.bzl
 new	-	bazel/internal/cross_platform_test.bzl
 new	-	bazel/internal/detect_local_resources.ps1
+new	-	bazel/internal/exec_tool.bzl
 edit	56ca80da56af127f244a23d82d928732ffa90751	bazel/internal/lit.bzl
 edit	4e50aac7d3b1211779d13977a9a8a399f4384455	bazel/internal/llvm-lit/BUILD.bazel
 edit	628de647178acb5de5fa6824e1a77ba303f5807c	bazel/internal/llvm-lit/validate_lit_features.py

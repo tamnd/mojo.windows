@@ -577,6 +577,16 @@ http_archive(
     url = "https://github.com/astral-sh/uv/releases/download/0.9.7/uv-x86_64-unknown-linux-gnu.tar.gz",
 )
 
+# The only one of the four that is a zip rather than a tarball, and the only one with the
+# binaries at the top level rather than in a directory named after the triple, so no
+# strip_prefix. It ships uvw.exe and uvx.exe alongside uv.exe and nothing here wants those.
+http_archive(
+    name = "uv_windows_x86_64",
+    build_file_content = 'exports_files(["uv.exe"])',
+    sha256 = "5d250c32d3604e28dbe18dc65c668ff628c53e00dde2c642576e831e4a60da64",
+    url = "https://github.com/astral-sh/uv/releases/download/0.9.7/uv-x86_64-pc-windows-msvc.zip",
+)
+
 http_archive(
     name = "uv_darwin_aarch64",
     build_file_content = 'exports_files(["uv"])',
