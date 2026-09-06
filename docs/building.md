@@ -344,6 +344,27 @@ Those are two runs of a program whose only content is a `memset` through a null 
 
 The binaries this repository's own Bazel build produces are linked by the toolchain rather than by `mojo build` and still have no PDB. Turning it on there is a separate decision, because a debug build's PDB is four megabytes per test executable and there are a couple of hundred of them.
 
+## A stack overflow prints one line
+
+The trace above is what an ordinary fault gets. A stack overflow got nothing at all, and working out why took longer than fixing it, because everything about the handler looks like it should have covered that too.
+
+Windows raises `STATUS_STACK_OVERFLOW` and the exit code was always right, `0xC00000FD` reported as `-1073741571`. What never happened was any output. LLVM installs an unhandled exception filter, with `SetUnhandledExceptionFilter`, and Windows does not reach the filter chain at all for a stack overflow in these binaries. A vectored handler does run. Windows calls those before it starts looking for a frame handler, which is early enough that nothing has had to unwind yet, and that is where the announcement now sits.
+
+It prints one line naming the thread and returns `EXCEPTION_CONTINUE_SEARCH`, so nothing else about the crash changes. The process still ends the same way with the same exit code, and any fault that is not a stack overflow goes straight past it into LLVM's filter and gets exactly the trace it always did.
+
+```
+about to crash
+Stack overflow in thread 11936. The usual cause is recursion with no base case.
+```
+
+A stack trace would be the obvious thing to print instead and it is deliberately not printed. A thread that has just overflowed has tens of thousands of frames on it, every one of them symbolised through dbghelp, and a crash report that takes minutes to come out is not a crash report. `llvm::sys::PrintStackTrace` takes a depth argument, which would have been the answer, but the Windows implementation of it carries a FIXME saying the depth is ignored. Which thread ran out of stack is most of what there was to say anyway.
+
+The one thing the handler needs is somewhere to run. Windows runs it on the stack of the thread that faulted, and a thread that has just overflowed has a page of that left at most, so `SetThreadStackGuarantee` asks for 64 kilobytes to be kept back for this and nothing else. It costs nothing until something faults, because those pages are reserved rather than committed, and it is asked for once, on the main thread, next to where the handler is installed.
+
+The other half of the report was that the fault came out as an access violation rather than a stack overflow, which would point at missing stack probes. It does not and they are not missing. `mojo build --emit asm` on a program with a frame over 4096 bytes puts two `__chkstk` calls in it for `x86_64-pc-windows-msvc` and none for `x86_64-unknown-linux-gnu`, which is exactly right, and a real overflow exited `0xC00000FD` before any of this changed.
+
+Getting a program that actually overflows is harder than it sounds and is worth writing down. The obvious one, a function that returns `recurse(n + 1) + n`, becomes a loop under optimisation and runs forever without ever touching the stack. What does overflow is a frame with a real buffer in it that is written and read through volatile accesses, because a volatile access is the one thing that stops the buffer being promoted away and the call being turned into a jump.
+
 ## The CPU baseline for Windows is x86-64-v2
 
 There are two CPU baselines in play here and they are easy to conflate. One is the instruction set the Windows compiler binaries in a release are built for, which decides what machine can run `mojo.exe` at all. The other is the default instruction set `mojo build` picks for the program a user compiles with it. They are set in different places and they do not have the same answer.

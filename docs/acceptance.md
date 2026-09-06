@@ -20,7 +20,7 @@ Record the result of each item in the release notes or in the milestone issue. A
 
 5. **Ctrl-C interrupts a running program without orphaning child processes.** Needs a person at a real console. Console control events are delivered to a process group attached to a console, so this cannot be checked over a remote shell in any way that means anything.
 
-6. **A crash produces a usable stack trace.** Build something that faults, run it, and see what comes out. Check more than one kind of fault. A null store and a stack overflow go through the same handler and do not behave the same way, and checking only the easy one is how this item got recorded wrong the first time.
+6. **A crash produces a usable stack trace.** Build something that faults, run it, and see what comes out. Check more than one kind of fault. A null store and a stack overflow do not go through the same handler on Windows and are not supposed to look the same: the first prints an exception code and a symbolised frame list, the second prints one line naming the thread and exits with `0xC00000FD`. Checking only the easy one is how this item got recorded wrong the first time.
 
 7. **A program built for Windows runs on a machine with no SDK and no redistributable installed.** The C runtime is linked statically, so the check is the import table: `hello.exe` should import `KERNEL32.dll` and the Mojo runtime and nothing else. Anything else in that list is a dependency somebody has to install first, which is the thing static linking was chosen to avoid.
 
