@@ -1,0 +1,27 @@
+--- a/cc/private/link/finalize_link_action.bzl
++++ b/cc/private/link/finalize_link_action.bzl
+@@ -424,10 +424,22 @@
+         # On Unix, we currently can't split dynamic library links if they have interface outputs.
+         # That was probably an unintended side effect of the change that introduced interface
+         # outputs.
+         if interface_output:
+-            # On Windows, We can always split the command line when building DLL.
+-            return feature_configuration.is_enabled("targets_windows")
++            # The restriction above is about the tool, not the platform. An
++            # interface output means the link may go through
++            # link_dynamic_library.sh, which reads its arguments positionally and
++            # would not know what to do with a response file. A toolchain that
++            # configures its own linker path never uses that script, and the real
++            # linker takes an @file, so there is nothing left to protect here.
++            uses_link_dynamic_library_tool = (
++                feature_configuration.is_enabled("supports_interface_shared_libraries") and
++                not feature_configuration.is_enabled("has_configured_linker_path")
++            )
++            return (
++                feature_configuration.is_enabled("targets_windows") or
++                not uses_link_dynamic_library_tool
++            )
+         else:
+             return True
+     elif link_type.linker_or_archiver == USE_LINKER:
+         return True

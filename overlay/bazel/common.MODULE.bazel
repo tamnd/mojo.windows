@@ -50,6 +50,15 @@ archive_override(
         # declared right on top of the real library and collides with the action
         # that produces it.
         "//bazel/public-patches:rules_cc_copy_dynamic_libraries_same_package.patch",
+        # Bazel will not spill a link command line to a response file when the
+        # link also produces an interface library. The comment on that check calls
+        # the restriction a Unix one and probably unintended, and what it is really
+        # protecting is link_dynamic_library.sh, which reads its arguments
+        # positionally. This toolchain configures its own linker path and never
+        # runs that script, so the check is asking the wrong question. It only
+        # matters on a Windows host, where the three DLL links in the tree are
+        # longer than anything the command processor will agree to start.
+        "//bazel/public-patches:rules_cc_shared_library_param_file.patch",
     ],
     strip_prefix = "rules_cc-ad214a9cb17d41e4e03199d61d436974a2261885",
     urls = [
