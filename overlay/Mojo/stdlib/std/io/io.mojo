@@ -42,7 +42,7 @@ from std.sys._amdgpu import (
     printf_begin,
 )
 from std.sys._metal_print import _metal_print_write
-from std.sys._libc import dup, fclose, fdopen, fflush, FILE_ptr
+from std.sys._libc import dup, fclose, fdopen, FILE_ptr
 from std.sys.info import CompilationTarget
 
 from std.memory import bitcast
@@ -174,17 +174,6 @@ struct _fdopen[mode: StaticString = "a"](ImplicitlyCopyable, RegisterPassable):
         # Explicitly free the buffer using free() instead of the Mojo allocator.
         libc.free(unsafe_cast[Type=NoneType, origin=MutAnyOrigin](buffer))
         return s^
-
-
-# ===----------------------------------------------------------------------=== #
-#  _flush
-# ===----------------------------------------------------------------------=== #
-
-
-@no_inline
-def _flush(file: FileDescriptor = stdout):
-    with _fdopen(file) as fd:
-        _ = fflush(fd.handle)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -464,7 +453,9 @@ def print[
         values: The elements to print.
         sep: The separator used between elements.
         end: The String to write after printing the elements.
-        flush: If set to true, then the stream is forcibly flushed.
+        flush: Accepted for compatibility and does nothing. Output written by
+            `print` reaches the operating system before the call returns, so
+            there is never anything left to force out.
         file: The output stream.
     """
 
@@ -476,9 +467,8 @@ def print[
         var buffer = _FlushingWriteBuffer(file)
         values._write_to(buffer, sep=sep, end=end)
 
+        # The flush, whatever `flush` says. Same reasoning as the branch below.
         buffer.flush()
-        if flush:
-            _flush(file=file)
 
         return
 
@@ -517,10 +507,19 @@ def print[
         var buffer = _FlushingWriteBuffer(file)
         values._write_to(buffer, sep=sep, end=end)
 
+        # This is the flush, and it happens whether `flush` was asked for or
+        # not. `_FlushingWriteBuffer` batches into a fixed array and hands the
+        # result to `FileDescriptor`, which calls `write` on the descriptor, so
+        # by the time this returns the bytes belong to the operating system and
+        # there is no second buffer in front of them to push on.
+        #
+        # There used to be a `_flush` after this that opened a `FILE` over a
+        # duplicate of the descriptor, flushed it and closed it again. A `FILE`
+        # made that way starts with an empty buffer of its own and has no
+        # connection to anything the process wrote earlier, so what it flushed
+        # was a buffer that had never held anything. It cost a `dup`, an
+        # `fdopen` and an `fclose` per call and did nothing.
         buffer.flush()
-
-        if flush:
-            _flush(file=file)
 
 
 # ===----------------------------------------------------------------------=== #

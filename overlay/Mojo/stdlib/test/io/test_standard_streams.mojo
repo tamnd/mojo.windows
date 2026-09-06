@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.os import remove
+from std.os import remove, stat
 from std.os.path import join
 from std.sys._fd import (
     _O_BINARY,
@@ -74,6 +74,34 @@ def test_standard_streams_are_in_binary_mode() raises:
     comptime if CompilationTarget.is_windows():
         for fd in range(3):
             assert_equal(fd_set_binary_mode(fd), _O_BINARY)
+
+
+def test_print_leaves_nothing_in_a_buffer_of_its_own() raises:
+    """Checks that what `print` writes has reached the operating system.
+
+    `print(flush=True)` is a promise, and the way it is kept is that there is
+    nothing in the way: the formatted bytes go straight to the descriptor.
+    Asking the file how large it is while it is still open is what tells the
+    difference, because a byte still sitting in a buffer this process owns has
+    not changed the size of anything yet.
+
+    Nothing is closed before the size is read, deliberately. Closing would
+    flush any buffer there was and the test would pass either way.
+    """
+    var temp_dir = gettempdir()
+    if not temp_dir:
+        raise Error("no temporary directory to write into")
+    var path = join(temp_dir.value(), "mojo_print_flush_check.txt")
+
+    var f = open(path, "w")
+    print("a", file=FileDescriptor(f), flush=True)
+    var size = stat(path).st_size
+    f.close()
+    remove(path)
+
+    # `open` asks for `O_BINARY` on Windows, so the newline is one byte there
+    # as well and the count is the same on every platform.
+    assert_equal(size, 2)
 
 
 def main() raises:
