@@ -27,6 +27,7 @@ from std.os import abort, getenv, setenv
 from std.os.path import dirname
 from std.pathlib import Path
 from std.sys.arg import argv
+from std.sys.info import CompilationTarget
 from std.ffi import (
     external_call,
     _DLHandle,
@@ -47,6 +48,20 @@ from std.utils import Variant
 
 comptime Py_ssize_t = c_ssize_t
 comptime Py_hash_t = Py_ssize_t
+
+
+def _env_path_separator() -> StaticString:
+    """What separates two paths inside one environment variable here.
+
+    A colon everywhere except Windows, where it is a semicolon, because a
+    colon there is already part of a path and could not separate two of them.
+    This is `os.pathsep` in Python and it is not the same character as the one
+    that separates the components of a single path.
+    """
+    comptime if CompilationTarget.is_windows():
+        return ";"
+    return ":"
+
 
 # ===-----------------------------------------------------------------------===#
 # Raw Bindings
@@ -1718,13 +1733,15 @@ struct CPython(Defaultable, Movable):
         var file_dir = dirname(argv()[0])
         if Path(file_dir).is_dir() or file_dir == "":
             var python_path = getenv("PYTHONPATH")
-            # A leading `:` will put the current dir at the top of sys.path.
-            # If we're doing `mojo run main.mojo` or `./main`, the returned
-            # `dirname` will be an empty string.
+            # A leading separator will put the current dir at the top of
+            # sys.path. If we're doing `mojo run main.mojo` or `./main`, the
+            # returned `dirname` will be an empty string.
+            var sep = _env_path_separator()
             if file_dir == "" and not python_path:
-                file_dir = ":"
+                file_dir = String(sep)
             if python_path:
-                _ = setenv("PYTHONPATH", String(t"{file_dir}:{python_path}"))
+                var joined = String(t"{file_dir}{sep}{python_path}")
+                _ = setenv("PYTHONPATH", joined)
             else:
                 _ = setenv("PYTHONPATH", file_dir)
 
@@ -1740,6 +1757,25 @@ struct CPython(Defaultable, Movable):
         )
 
         var python_lib = getenv("MOJO_PYTHON_LIBRARY")
+
+        # Python 3.10 on Windows cannot work out where its own standard library
+        # is when it is embedded in a program that is not `python.exe`, and
+        # every version after it can. Its path search only ever looks for `Lib`
+        # and `DLLs` relative to `PYTHONHOME`, so with that unset the
+        # interpreter starts, works out the right `sys.prefix` from the library
+        # it was loaded out of, puts no `Lib` on `sys.path` anyway, and dies on
+        # `No module named 'encodings'` before anything here can say a word.
+        #
+        # The answer is the directory the library is in, because on Windows
+        # `pythonXY.dll` sits in the root of an install beside `python.exe` with
+        # the standard library under it. Only when nobody has said otherwise,
+        # and only when that directory really does hold a standard library,
+        # since naming a home that has no `Lib` in it is worse than naming none.
+        comptime if CompilationTarget.is_windows():
+            if python_lib and not getenv("PYTHONHOME"):
+                var home = dirname(python_lib)
+                if (Path(home) / "Lib" / "os.py").is_file():
+                    _ = setenv("PYTHONHOME", home)
 
         # Note:
         #   MOJO_PYTHON_LIBRARY can be "" when the current Mojo program
