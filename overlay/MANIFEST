@@ -58,6 +58,7 @@ edit	96a06ca9fa662f93e00f6bfee2901eab54fe0d1a	Mojo/stdlib/std/testing/assert_abo
 edit	5439bdaef796e82aacd354d0e674d5f4d62bbbb8	Mojo/stdlib/std/time/time.mojo
 edit	bef2f1535fd2c3677fc00316698507d2718a70e7	Mojo/stdlib/std/utils/_ansi.mojo
 edit	784b617c1c9bbb8dab1ba4e02448e1ad648959b2	Mojo/stdlib/test/builtin/test_file.mojo
+edit	d972135af03b425fe9ead0001946e30a3bded628	Mojo/stdlib/test/ffi/test_external_call.mojo
 edit	cd278e1c94ad17736bedb08b14dad8ac70b2cc26	Mojo/stdlib/test/io/BUILD.bazel
 new	-	Mojo/stdlib/test/io/test_comptime_print.mojo
 new	-	Mojo/stdlib/test/io/test_printf.mojo
