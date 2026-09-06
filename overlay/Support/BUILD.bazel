@@ -58,6 +58,17 @@ modular_cc_library(
     hdrs = ["include/Support/WindowsHeader.h"],
 )
 
+# Same shape as WindowsHeader and for the same reason. setenv and unsetenv are
+# POSIX and the MSVC runtime has neither, so this is the two of them written in
+# terms of what it does have. Its own target because "who needs setenv" is then a
+# question the graph answers, and because the list is meant to stay short: this
+# is test and benchmark code putting a variable in its own environment, not
+# anything the compiler does at runtime.
+modular_cc_library(
+    name = "PortableEnv",
+    hdrs = ["include/Support/PortableEnv.h"],
+)
+
 modular_cc_library(
     name = "Base",
     srcs = [
