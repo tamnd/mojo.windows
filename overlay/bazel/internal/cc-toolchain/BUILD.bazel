@@ -115,6 +115,16 @@ cc_sysroot(
 # behind the builtin directory whether we name it or not. It stays because it says out loud
 # that clang's headers have to come first, and a line that states a requirement is worth
 # more than a flag saved.
+#
+# -nostdinc is what makes the list above the whole list. Building on a Linux host it changes
+# nothing, because there is no MSVC on the machine for clang to go and find. Building on a
+# Windows host clang finds the installed Visual Studio and Windows SDK by itself and puts
+# them on ahead of anything -idirafter names, so the compile reads the machine's headers
+# rather than the sysroot's, and Bazel then rejects it for including files by absolute path
+# that nothing in the toolchain declared. That check is right and the fix is not to declare
+# them. Two machines should compile the same headers, and the sysroot is the copy we know
+# the version of, so the search stays closed and everything in it is named here. -nostdinc
+# also drops clang's builtin directory, which is why the -isystem below is not optional.
 cc_args(
     name = "windows_sysroot_headers",
     actions = [
@@ -126,6 +136,7 @@ cc_args(
         "//bazel/internal/cc-toolchain/tools:resource_directory",
     ],
     args = [
+        "-nostdinc",
         "-isystem",
         "{resource_dir}/include",
         "-idirafter",

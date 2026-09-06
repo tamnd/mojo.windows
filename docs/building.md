@@ -76,6 +76,25 @@ It has to be `--repo_env` and not an exported shell variable. Upstream sets `--e
 
 Doing nothing useful is the designed behaviour rather than a gap. With the variable unset the repository is empty but still valid, so analysis of a Windows configured build works on any machine and only a real compile action fails. That is the same trick the macOS sysroot rule uses, and it is what lets the cross build lane check the build graph on a runner that has no business downloading Microsoft headers.
 
+### On a Windows host
+
+`xwin` is a linux-musl binary, so `windows-sysroot.sh` will not run on Windows and the splat has to be made somewhere else and carried across. WSL is the easy way, because `/mnt/c` is the Windows disk:
+
+```sh
+./scripts/windows-sysroot.sh
+./scripts/windows-sysroot-copy.sh /mnt/c/winsysroot
+```
+
+Then build from Windows with the Windows spelling of the path, because it is the compiler on the Windows side that has to open the files:
+
+```
+bazelw.bat build --config=build-mojo --repo_env=MOJO_WINDOWS_SYSROOT=C:/winsysroot ...
+```
+
+The copy is not a straight rsync of the splat. It drops every symlink, because xwin puts a lowercase link beside each header whose real name has capitals in it, about 1500 of them, and NTFS is case insensitive so the real file answers to either spelling without them. It also drops `winrt` and `cppwinrt`, which are over half the bytes and which the repository rule never links. What lands is about 415 MB.
+
+The compiler's include search is closed, which matters more on a Windows host than it does when cross compiling. `-nostdinc` is on for Windows targets, so clang looks only in the directories the toolchain names. Without it, clang finds the Visual Studio and Windows SDK installed on the machine and puts them ahead of everything `-idirafter` names, and the compile reads those instead of the sysroot. Bazel catches that and refuses the compile for including files by absolute path that nothing in the toolchain declared, which is the check doing its job. If it did not catch it, two machines with different Visual Studio versions would quietly compile different code. On a Linux host the flag changes nothing, because there is no MSVC there for clang to find.
+
 ### When it fails
 
 Two failures are worth naming because neither error message points at the cause.
@@ -407,7 +426,9 @@ The fifth was #264, and it is about how Windows follows a symlink. `llvm-project
 
 Rewriting the links afterwards is not possible from inside the repository rule, because the relativising happens after the rule has finished. What Bazel does leave alone is a target that is not under the output base, so `overlay/bazel/public-patches/llvm_windows_absolute_symlinks.patch` has the rule make a junction named `llvm-raw.<output base>` beside the output base pointing at `llvm-raw`, and the links name their sources through that. It is the same directory by a name Bazel does not rewrite, and one junction covers all 844 links. On Linux and macOS none of it runs and the links come out exactly as they did before.
 
-What stops it after that is #270, the sysroot. `MOJO_WINDOWS_SYSROOT` is what points the build at an xwin splat, the cross lane sets it, and a Windows host has nothing set, so `@sysroot-windows` is the empty repository and clang falls back to whatever MSVC and Windows SDK it can find installed on the machine. Bazel then refuses the compile for including headers by absolute path. That is the honest answer rather than a new bug: the compile ran, it found every one of its sources, and it was reading headers the toolchain had never declared.
+The sixth was #270, the sysroot, and it was half an operational problem and half a real one. `MOJO_WINDOWS_SYSROOT` is what points the build at an xwin splat, the cross lane sets it, and a Windows host had nothing set, so `@sysroot-windows` was the empty repository. The operational half is that xwin is a linux-musl binary and cannot be run on Windows at all, so the splat has to be made elsewhere and carried over, which `scripts/windows-sysroot-copy.sh` now does and which the sysroot section above describes.
+
+The real half showed up once the sysroot was in place and the compile still read `C:/BuildTools` headers. clang detects an installed Visual Studio and Windows SDK by itself and puts them ahead of anything `-idirafter` names, so the sysroot was on the search path and losing. Bazel caught it and refused the compile for including files by absolute path that nothing in the toolchain had declared, which is the check being right rather than in the way. Declaring the machine's headers would have made the error go away and made two machines with different Visual Studio versions compile different code. So `-nostdinc` is on for Windows targets instead, and the list of directories in `bazel/internal/cc-toolchain/BUILD.bazel` is now the whole list. It also drops clang's own builtin directory, which is why the `-isystem` for the resource directory beside it is not optional. On a Linux host the flag changes nothing, because there is no MSVC on the machine for clang to go and find.
 
 ## Machines
 
