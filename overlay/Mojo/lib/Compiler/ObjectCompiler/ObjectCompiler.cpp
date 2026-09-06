@@ -822,8 +822,40 @@ translateModuleToLLVMIR(llvm::LLVMContext &ctx, ModuleOp module,
   return llvmModule;
 }
 
+/// Give a COFF image something to export.
+///
+/// ELF and Mach-O publish every definition that survives with default
+/// visibility, so a shared object built from them exports whatever the call
+/// graph slicing left behind and nothing else has to be said. COFF has no such
+/// default. A DLL exports exactly the symbols its objects asked to export, and
+/// an object asks by marking them, so without this a Mojo shared library on
+/// Windows links, loads, and has an empty export table. Half of #134.
+///
+/// The set marked here is the set the other two formats would publish: every
+/// definition that is still externally visible once the slicing has run.
+/// Anything reachable only from inside was made local before this point.
+/// Declarations are left alone, because a symbol this module imports is the
+/// other end of somebody else's export and not ours to hand out. So are the
+/// appending globals, which are `llvm.used` and its relatives and describe the
+/// module to the linker rather than naming anything a loader can look up.
+static void markDefinitionsForCOFFExport(llvm::Module &llvmModule) {
+  for (llvm::GlobalValue &value : llvmModule.global_values()) {
+    if (value.isDeclarationForLinker() || value.hasLocalLinkage() ||
+        value.hasAppendingLinkage())
+      continue;
+    if (value.getVisibility() != llvm::GlobalValue::DefaultVisibility)
+      continue;
+    // Something already declared dllimport is being read out of another image
+    // and is not a definition of ours to export, whatever its linkage says.
+    if (value.hasDLLImportStorageClass())
+      continue;
+    value.setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
+  }
+}
+
 ErrorOr<std::unique_ptr<llvm::Module>>
-ObjectCompiler::lowerAllFuncsToLLVM(llvm::LLVMContext &ctx, ModuleOp module) {
+ObjectCompiler::lowerAllFuncsToLLVM(llvm::LLVMContext &ctx, ModuleOp module,
+                                    bool forSharedObject) {
   CompilerTimeTraceScope traceScope("lower-to-llvm");
 
   mlir::PassManager mgr = createPassManager(pmOptions.operationName, &context);
@@ -860,6 +892,12 @@ ObjectCompiler::lowerAllFuncsToLLVM(llvm::LLVMContext &ctx, ModuleOp module) {
       translateModuleToLLVMIR(ctx, module, options);
   if (!llvmModule)
     return Error("translate module to LLVMIR failed");
+
+  // After the translation and before anything reads the module, so that the
+  // splitting and the per function codegen below both see the storage class.
+  if (forSharedObject &&
+      llvm::Triple(options.targetTriple).isOSBinFormatCOFF())
+    markDefinitionsForCOFFExport(*llvmModule);
 
   return llvmModule;
 }
@@ -1028,7 +1066,8 @@ static void computeFnOrdering(llvm::Module &module,
 
 ErrorOr<BufferRef> ObjectCompiler::emitArchive(OwningOpRef<ModuleOp> module,
                                                bool emitAssembly,
-                                               std::string *outKeyHash) {
+                                               std::string *outKeyHash,
+                                               bool forSharedObject) {
   LLVMTimingRegion timingRegion(options);
   CompilerTimeTraceScope traceScope("produce-archive");
 
@@ -1044,13 +1083,14 @@ ErrorOr<BufferRef> ObjectCompiler::emitArchive(OwningOpRef<ModuleOp> module,
                                AsyncRT::AnyAsyncValueRef chain) {
     auto output = AsyncRT::AsyncValueRef<BufferRef>::allocate(cpuDevice);
     chain.andThenSync([this, op, output = output.copy(), buf = buf.copy(), &tm,
-                       emitAssembly]() mutable {
+                       emitAssembly, forSharedObject]() mutable {
       // Lower the module to LLVM.
       LLVMModuleAndContext llvmModule;
       Location moduleLoc = op->getLoc();
 
       if (auto err = llvmModule.create([&](llvm::LLVMContext &ctx) {
-            return lowerAllFuncsToLLVM(ctx, cast<ModuleOp>(op));
+            return lowerAllFuncsToLLVM(ctx, cast<ModuleOp>(op),
+                                       forSharedObject);
           })) {
         op->erase();
         return std::move(output).setToError(AsyncRT::getMLIRDiagnostic(
@@ -1168,7 +1208,8 @@ ErrorOr<BufferRef> ObjectCompiler::emitArchive(OwningOpRef<ModuleOp> module,
                      << options.enableLLVMPerFunctionSplitting
                      << ", emitAssembly=" << emitAssembly
                      << ", relocModel=" << options.relocModel
-                     << ", verboseOutput=" << options.verboseOutput << ')';
+                     << ", verboseOutput=" << options.verboseOutput
+                     << ", forSharedObject=" << forSharedObject << ')';
 
   AsyncRT::AnyAsyncValueRef output = cachedTransform(
       module.release(), transformCache.copy(),
@@ -1394,8 +1435,11 @@ static ErrorOr<BufferRef> createSharedObject(BufferRef buf,
       // it references at link time, and anything it expects from the process
       // that loads it has to arrive through an import library rather than a
       // linker flag. So a module that only refers to itself links here, and one
-      // that reaches back into the runtime does not. That, and the fact that a
-      // COFF image exports nothing unless the object says so, is #134.
+      // that reaches back into the runtime does not, which is the half of #134
+      // that is still open. The other half, that a COFF image exports nothing
+      // unless the object says so, is handled before this by
+      // `markDefinitionsForCOFFExport`, so there is nothing to say on the
+      // command line about what the image should publish.
       SmallVector<StringRef> args = {linker, "-flavor", linkerFlavor};
       backend.appendLinkArgs(args, options);
       args.push_back("/DLL");
@@ -1503,8 +1547,9 @@ ErrorOrSuccess ObjectCompiler::emitSharedObject(OwningOpRef<ModuleOp> module,
     moduleName = llvm::sys::path::filename(moduleLoc.getFilename());
 
   // Generate .o in memory.
-  ErrorOr<BufferRef> bufOr =
-      ObjectCompiler::emitArchive(std::move(module), /*emitAssembly=*/false);
+  ErrorOr<BufferRef> bufOr = ObjectCompiler::emitArchive(
+      std::move(module), /*emitAssembly=*/false, /*outKeyHash=*/nullptr,
+      /*forSharedObject=*/true);
 
   if (bufOr.isError())
     return Error("failed to lower LLVM IR to object binary");

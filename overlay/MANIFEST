@@ -21,6 +21,7 @@ edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
 edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 new	-	Mojo/examples/windows-hello/BUILD.bazel
 new	-	Mojo/examples/windows-hello/hello.mojo
+edit	dfc20ff2f28d031b0c2dbf736220e518279caffd	Mojo/include/Mojo/Compiler/ObjectCompiler.h
 edit	c05a79e83f9d92be0834751dcc5f22a24682a19f	Mojo/include/Mojo/Support/Configuration.h
 edit	59f6f330c21fe83dc6241eb535e4692521d45656	Mojo/lib/Compiler/ObjectCompiler/ObjectCompiler.cpp
 edit	d916230e014c471d175bdaff41f1d9eed6184b55	Mojo/lib/CompilerRT/Memory.h
@@ -81,7 +82,6 @@ edit	8d230683111ef8dcb245d9ab9d584374e671cec5	Mojo/stdlib/test/pathlib/test_path
 edit	4d1aac948c00687e8ec7550e19baef9e4e7469ba	Mojo/stdlib/test/python/BUILD.bazel
 edit	3a96dcffdcb963c56a4213c2a13b7f9634a078fe	Mojo/stdlib/test/subprocess/test_run.mojo
 edit	1e7a5e4e7b567b1f626efe9583ec968e78c3c901	Mojo/stdlib/test/sys/BUILD.bazel
-new	-	Mojo/stdlib/test/sys/test_bad_descriptor.mojo
 edit	2c2f458f79364ecf7ba0f924a3bbb84da1158d09	Mojo/stdlib/test/sys/test_c_types.mojo
 edit	e0df474d713fab3ddf649b784ebeb78a0e09a78b	Mojo/stdlib/test/sys/test_dlhandle.mojo
 edit	43235ae52939ebee5207bc993c75c9a55d5235cc	Mojo/stdlib/test/sys/test_ffi.mojo

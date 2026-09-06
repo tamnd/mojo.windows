@@ -15,32 +15,7 @@
 from std.ffi import external_call, _get_global
 from std.sys import CompilationTarget, stderr, stdin, stdout
 from std.sys._fd import fd_set_binary_mode
-from std.sys._win import suppress_invalid_parameter_for_process
 from std.sys.compile import SanitizeAddress
-
-
-def _stop_the_c_runtime_ending_the_process():
-    """Make a bad argument a failure to return rather than a way to die.
-
-    Most of the Windows C runtime validates its arguments, and a check that
-    fails calls a handler instead of returning the failure POSIX would return.
-    The handler in the release runtime is `__fastfail`, so the process is gone
-    before the call returns, with no exit code anybody chose and nothing
-    printed. A descriptor that is not open is enough: `FileDescriptor(-1)` and
-    a read is a program that raises on Linux and disappears on Windows.
-
-    The handler this installs returns, and the call then reports its documented
-    failure with errno set, which is the answer the standard library is written
-    against. See `suppress_invalid_parameter_for_process` in `sys._win` for why
-    this is done once here rather than around each call.
-
-    It goes first, before the streams are put into binary mode, because that
-    switch is itself a call that can be handed a descriptor that is not open. A
-    program started with its standard input closed has one, and `_setmode` on
-    it would take the process down on the line before this one had run.
-    """
-    comptime if CompilationTarget.is_windows():
-        suppress_invalid_parameter_for_process()
 
 
 def _set_standard_streams_to_binary_mode():
@@ -123,9 +98,6 @@ def __wrap_and_execute_main[
 ) -> Int32:
     """Define a C-ABI compatible entry point for non-raising main function."""
 
-    # Before anything has had the chance to fail. See the function for why.
-    _stop_the_c_runtime_ending_the_process()
-
     # Before anything has had the chance to write. See the function for why.
     _set_standard_streams_to_binary_mode()
 
@@ -162,9 +134,6 @@ def __wrap_and_execute_raising_main[
     argv: __mlir_type[`!kgen.pointer<!kgen.pointer<scalar<ui8>>>`],
 ) -> Int32:
     """Define a C-ABI compatible entry point for a raising main function."""
-
-    # Before anything has had the chance to fail. See the function for why.
-    _stop_the_c_runtime_ending_the_process()
 
     # Before anything has had the chance to write. See the function for why.
     _set_standard_streams_to_binary_mode()

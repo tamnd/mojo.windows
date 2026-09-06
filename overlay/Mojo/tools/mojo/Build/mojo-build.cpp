@@ -600,8 +600,13 @@ static std::optional<int> compileModuleToArchive(
   } break;
   }
 
-  // Generate an archive for the module.
-  auto archiveOr = objectCompiler->emitArchive(std::move(module));
+  // Generate an archive for the module. A shared library says so, because on
+  // COFF an object has to ask for its symbols to be exported and one heading
+  // into an executable should not ask. An `OutputType::object` cannot say,
+  // since nothing here knows what it will be linked into, so it does not.
+  auto archiveOr = objectCompiler->emitArchive(
+      std::move(module), /*emitAssembly=*/false, /*outKeyHash=*/nullptr,
+      /*forSharedObject=*/outputType == OutputType::sharedLibrary);
   if (failed(archiveOr))
     return state.reportError("failed to produce an archive for the module: " +
                              Twine(archiveOr.getError()));
