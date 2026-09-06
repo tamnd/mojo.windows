@@ -87,3 +87,27 @@ Nothing in this release changes what is in the archive. Every change since v0.5.
 7. **Pass.** `llvm-readobj --coff-imports` on `hello.exe` lists `KGENCompilerRTShared.dll` and `KERNEL32.dll` and nothing else.
 
 8. **Pass.** Defender scanned the unpacked archive with real time protection on, engine 1.1.26080.3, signatures 1.459.56.0, and left all twelve files in place.
+
+## The v0.5.5 run
+
+Against `mojo-windows-runtime-0.5.5-x86_64.zip` as built by `scripts/package-windows.sh`, unpacked on the same machine as every run before it, Windows 11 26H1, build 10.0.28120. Still the machine that built it, which is still the weakest part of this checklist.
+
+The first full run since v0.5.2, and the first release since v0.5.0 where the binaries in the archive are a different program rather than the same ones repackaged. #273 changed the runtime, and item 6 is the item that covers what it changed.
+
+1. **Not applicable.** Still no `mojo.exe`, so still no REPL to start.
+
+2. **Unchanged, half outstanding.** Nothing has touched colour handling since v0.4.2, so the mechanical half stands. Nobody has yet sat in front of cmd.exe, PowerShell and Windows Terminal and judged how the colours read.
+
+3. **Pass.** Unpacked under `C:\tmp\rel055\café-日本\unpacked`. `bin\hello.exe` printed `Hello from Mojo` and `built for Windows: True` and exited 0, both by absolute path and with the unpacked directory as the working directory.
+
+4. **Pass.** Unpacked under `C:\Program Files\mojo windows test 055` and ran the same two ways with the same output.
+
+5. **Not run.** Needs a person at a console, and there is still nothing long running in the archive to interrupt.
+
+6. **Pass, both kinds.** This is the item that has been a partial failure since v0.4.2 and it passes now. A program that raises an access violation prints `Exception Code: 0xC0000005` and five symbolised frames and exits with that code. A program that recurses until the stack runs out prints `Stack overflow in thread 10040. The usual cause is recursion with no base case.` and exits with `0xC00000FD`, which is both halves of what #239 asked for and also settles #238, since the code that arrives is a stack overflow and not an access violation.
+
+    Writing a program that actually overflows is harder than it reads, and it is worth writing down because it cost most of the time this item took. Recursion whose result feeds an addition is not safe to assume will use stack: `return work + recurse(n + 1)` is an associative accumulation and LLVM turns it into a loop, alloca and all, so the program runs forever at a fixed stack depth and prints nothing. That looks exactly like the failure this item is meant to catch. What works is keeping the frame live across the recursive call, by reading a `stack_allocation` with a volatile load after the call comes back rather than only before it. Then there is nothing to fold and every frame stays on the stack.
+
+7. **Pass.** `llvm-objdump -p` on `hello.exe` lists `KGENCompilerRTShared.dll` and `KERNEL32.dll` and nothing else. Earlier runs used `llvm-readobj --coff-imports` for this, and the toolchain archive the build fetches does not ship `llvm-readobj`, so `llvm-objdump -p` is the one to reach for.
+
+8. **Pass.** Defender scanned both unpacked copies with real time protection on, engine 1.1.26080.3, signatures 1.459.64.0, and left all twelve files in each of them in place.
