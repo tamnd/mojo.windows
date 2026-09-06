@@ -152,6 +152,21 @@ single_version_override(
     ],
 )
 
+# abseil defines its per thread semaphore functions with a weak attribute, which
+# it enables on Windows whenever clang is new enough. That is right for compiling
+# and wrong for linking here: Bazel puts a library's objects inside a start-lib
+# group, so each one is lazy, and lld-link will not fetch a lazy object to satisfy
+# a reference that is only weak. The definition sits in the group unread and the
+# reference stays undefined. Turning the attribute off on Windows is what abseil
+# already does for MinGW, and it is the smaller of the two available answers.
+single_version_override(
+    module_name = "abseil-cpp",
+    patch_strip = 1,
+    patches = [
+        "//bazel/public-patches:abseil_windows_weak_symbols.patch",
+    ],
+)
+
 single_version_override(
     module_name = "with_cfg.bzl",
     patch_strip = 1,
