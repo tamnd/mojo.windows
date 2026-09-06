@@ -111,3 +111,27 @@ The first full run since v0.5.2, and the first release since v0.5.0 where the bi
 7. **Pass.** `llvm-objdump -p` on `hello.exe` lists `KGENCompilerRTShared.dll` and `KERNEL32.dll` and nothing else. Earlier runs used `llvm-readobj --coff-imports` for this, and the toolchain archive the build fetches does not ship `llvm-readobj`, so `llvm-objdump -p` is the one to reach for.
 
 8. **Pass.** Defender scanned both unpacked copies with real time protection on, engine 1.1.26080.3, signatures 1.459.64.0, and left all twelve files in each of them in place.
+
+## The v0.5.6 run
+
+Against `mojo-windows-runtime-0.5.6-x86_64.zip` as built by `scripts/package-windows.sh`, unpacked on the same machine as every run before it, Windows 11 26H1, build 10.0.28120. Still the machine that built it, which is still the weakest part of this checklist.
+
+#197 changed the startup code, so item 6 is a real run again rather than a carried over result. It is the item that covers what happens when a program goes wrong, and the startup wrapper is where the handlers that decide that get installed.
+
+1. **Not applicable.** Still no `mojo.exe`, so still no REPL to start.
+
+2. **Unchanged, half outstanding.** Nothing has touched colour handling since v0.4.2, so the mechanical half stands. Nobody has yet sat in front of cmd.exe, PowerShell and Windows Terminal and judged how the colours read.
+
+3. **Pass.** Unpacked under `C:\tmp\rel056\café-日本\unpacked`. `bin\hello.exe` printed `Hello from Mojo` and `built for Windows: True` and exited 0, both by absolute path and with the unpacked directory as the working directory.
+
+4. **Pass.** Unpacked under `C:\Program Files\mojo windows test 056` and ran the same two ways with the same output.
+
+5. **Not run.** Needs a person at a console, and there is still nothing long running in the archive to interrupt.
+
+6. **Pass, both kinds.** A program that stores through a pointer to nothing prints `Exception Code: 0xC0000005` and a frame list and exits with that code. A program that recurses until the stack runs out prints `Stack overflow in thread 3692. The usual cause is recursion with no base case.` and exits with `0xC00000FD`. Both are what v0.5.5 recorded, so the invalid parameter handler #197 installs at startup does not get in the way of either.
+
+    Two things about writing the second program are worth adding to what v0.5.5 already wrote down, because both cost time again. Keeping a `stack_allocation` live across the recursive call with a volatile load after it comes back is necessary and it is not sufficient: a function that calls itself and then adds something to the result is still an associative accumulation, and it still came back as a loop that ran at a fixed stack depth for ten minutes without faulting. What works is mutual recursion, two functions calling each other, which nothing rewrites into a loop. The frames in the first program are addresses and module offsets rather than names, because the program was built for this run and its debug information was not put next to it in the staging directory. The packaged `hello.exe` has the same shape and its symbols live in the separate `-pdb.zip`.
+
+7. **Pass.** `llvm-objdump -p` on `hello.exe` lists `KGENCompilerRTShared.dll` and `KERNEL32.dll` and nothing else.
+
+8. **Pass.** Defender scanned both unpacked copies with real time protection on, engine 1.1.26080.3, signatures 1.459.74.0, and left all twelve files in each of them in place.
