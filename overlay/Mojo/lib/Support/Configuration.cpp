@@ -183,6 +183,11 @@ void MojoConfig::appendSharedObjectLinkArgs(SmallVectorImpl<StringRef> &args) {
   }
 }
 
+StringRef MojoConfig::getCompilerRTImportLibraryPath() {
+  return getPath(STRINGIFY_MOJO_CONFIG(".compilerrt_import_lib_path"),
+                 "lib/KGENCompilerRTShared.lib");
+}
+
 void MojoConfig::appendSharedLibraryLinkArgs(
     SmallVectorImpl<StringRef> &args,
     llvm::function_ref<std::string(StringRef)> nameSharedLibrary) {

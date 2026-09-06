@@ -156,6 +156,24 @@ ObjectCompiler::create(StringRef basePath, CompilationOptions options,
   std::vector<std::string> sharedObjectLinkArgs(sharedObjectLinkArgRefs.begin(),
                                                 sharedObjectLinkArgRefs.end());
 
+  // A COFF shared object that calls into the Mojo runtime needs the runtime's
+  // import library on the link line, and the compiler already knows where the
+  // rest of its own files are, so it can find this one too rather than making
+  // somebody say. Only when the file is really there: the answer is a path
+  // into a Windows install, and the compiler doing the linking may well be
+  // running on a Linux host that has no such file, in which case naming it
+  // would turn a link that had nothing to do with the runtime into an error
+  // about a missing library.
+  //
+  // Anything the configuration asked for goes on the line first, so an install
+  // that wants a different runtime can put one there and have it win.
+  if (llvm::Triple(options.targetTriple).getObjectFormat() ==
+      llvm::Triple::COFF) {
+    StringRef importLib = config.getCompilerRTImportLibraryPath();
+    if (!importLib.empty() && llvm::sys::fs::exists(importLib))
+      sharedObjectLinkArgs.emplace_back(importLib);
+  }
+
   // Resolve the target backend once, up front. A missing backend means the
   // target is not supported by this build; fail here rather than silently
   // falling back deeper in the pipeline.
@@ -1445,10 +1463,11 @@ createSharedObject(BufferRef buf, CompilationOptions options,
       // it references at link time, and anything it expects from the process
       // that loads it has to arrive through an import library rather than a
       // linker flag. So a module that reaches outside itself needs the search
-      // paths and the libraries named, and they arrive in `extraLinkArgs` from
-      // the configuration, because an install is the only thing that knows
-      // where a C runtime lives on the machine being built for. Naming the
-      // Mojo runtime's own import library without being asked is #280.
+      // paths and the libraries named, and they arrive in `extraLinkArgs`. The
+      // Mojo runtime's own import library is put there by `create`, which can
+      // find it the way the compiler finds the rest of its own files. The C
+      // runtime is not, because an install is the only thing that knows where
+      // one lives on the machine being built for, so that part is configured.
       //
       // Nothing is said here about what the image should publish either. A COFF
       // image exports nothing unless its objects ask, and they ask before this

@@ -136,6 +136,19 @@ public:
   /// where an install put them.
   void appendSharedObjectLinkArgs(SmallVectorImpl<StringRef> &args);
 
+  /// Returns the path to the import library for the Mojo runtime, which is the
+  /// file a Windows link needs in order to call into it. It sits next to the
+  /// runtime's own DLL in the install, so this answers the question the same
+  /// way `getCompilerRTPath` does rather than making somebody name the path.
+  ///
+  /// The name is spelled out rather than asked of `PlatformLibrary`, because
+  /// an import library is a COFF idea and the only caller is the COFF arm of
+  /// the shared object link. That also means the answer describes the target
+  /// and not the host, so a Linux host cross compiling for Windows gets the
+  /// same name, and an install that has no such file gets a path to nothing.
+  /// The caller checks.
+  StringRef getCompilerRTImportLibraryPath();
+
   /// Appends the shared library arguments to link with Mojo when building a
   /// standalone binary.
   ///

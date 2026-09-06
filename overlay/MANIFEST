@@ -106,6 +106,7 @@ new	-	Mojo/test/abi-conformance/vectors.mojo
 new	-	Mojo/test/abi-conformance/widths.mojo
 new	-	Mojo/test/kgen/kgen-tool/kgen-emit-shared-windows.mlir
 new	-	Mojo/test/kgen/kgen-tool/kgen-shared-lib-link-args.mlir
+new	-	Mojo/test/kgen/kgen-tool/kgen-shared-lib-runtime-import-lib.mlir
 new	-	Mojo/test/kgen/pop-to-llvm/extern-c-abi-win64.mlir
 new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_cpu.mojo
