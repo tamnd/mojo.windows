@@ -33,8 +33,9 @@ import the other. See `final_path`.
 The fourth thing is not about Win32 at all but about the C runtime, which ends
 the process rather than returning a failure when it does not like an argument.
 Any module binding a CRT call that a caller could reasonably hand something
-invalid has to deal with that, so the switch for it lives here too. See
-`suppress_invalid_parameter`.
+invalid has to deal with that, so the switch for it lives here too, in a form
+that covers one call and a form that covers the process. See
+`suppress_invalid_parameter` and `suppress_invalid_parameter_for_process`.
 
 Nothing in this file is conditional. It only compiles on Windows and callers
 are expected to have already decided that, the same way `_libc` only makes
@@ -446,6 +447,36 @@ def restore_invalid_parameter(previous: _invalid_parameter_handler):
         "_set_thread_local_invalid_parameter_handler",
         _invalid_parameter_handler,
     ](previous)
+
+
+def suppress_invalid_parameter_for_process():
+    """The same switch, thrown once, for every call the process makes.
+
+    Wrapping one call is the right shape for one call. It is the wrong shape
+    for a module full of them, and `sys._fd` is one: `_read`, `_write`,
+    `_close`, `_dup`, `_dup2`, `_setmode`, `_lseeki64` and `_get_osfhandle` all
+    validate the descriptor and all end the process on one that is not open.
+    Wrapping each of them puts two extra calls on the read and write paths to
+    defend against something only user code can produce, which is a poor trade.
+
+    So the handler goes in globally instead, at startup, and costs nothing per
+    call. What it buys is that all eight return their documented failure value
+    with errno set, the way the same calls do on Linux, rather than raising
+    STATUS_STACK_BUFFER_OVERRUN and taking the process with them.
+
+    Global means one copy of the C runtime and not one program. Every module in
+    a Mojo program on Windows links its own, so this covers the calls made by
+    code compiled into whichever module called it, and it is called from the
+    startup wrapper, which is compiled into the executable. That is the same
+    reasoning, and the same limitation, as the binary mode switch next to it.
+
+    A thread local handler still wins over this one where a call has installed
+    it, which is what makes `suppress_invalid_parameter` safe to keep using.
+    """
+    _ = external_call[
+        "_set_invalid_parameter_handler",
+        _invalid_parameter_handler,
+    ](_ignore_invalid_parameter)
 
 
 # ===-----------------------------------------------------------------------===#

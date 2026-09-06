@@ -59,10 +59,11 @@ and sets EBADF, and asking about a descriptor that is not open is an ordinary
 thing to do. On Windows the CRT checks the descriptor and calls its invalid
 parameter handler instead of returning, and the handler in the release runtime
 ends the process with STATUS_STACK_BUFFER_OVERRUN, 0xC0000409, printing
-nothing. `fd_isatty` turns that off for the length of its call, because
-`isatty` on a closed descriptor is a question with a real answer. The other
-calls here have the same hazard and have not been given the same treatment yet,
-because every caller of them today holds a descriptor it opened itself. See
+nothing. That is turned off for the whole process at startup, so every call
+below answers the way the same call answers on Linux. `fd_isatty` also turns it
+off around its own call, which is not redundant: the process wide switch is
+thrown by the startup wrapper, and code that never went through that wrapper
+never threw it. See `suppress_invalid_parameter_for_process` and
 `suppress_invalid_parameter` in `sys._win`.
 
 The fifth is pipes, where the two systems ask for the same two things in a
