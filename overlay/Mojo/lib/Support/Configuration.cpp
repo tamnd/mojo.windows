@@ -176,6 +176,13 @@ void MojoConfig::appendSystemLibraryLinkArgs(SmallVectorImpl<StringRef> &libs) {
   }
 }
 
+void MojoConfig::appendSharedObjectLinkArgs(SmallVectorImpl<StringRef> &args) {
+  if (auto maybeArgs = getConfig().maybeGetValue(
+          STRINGIFY_MOJO_CONFIG(".shared_object_libs"))) {
+    maybeArgs.value().split(args, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+  }
+}
+
 void MojoConfig::appendSharedLibraryLinkArgs(
     SmallVectorImpl<StringRef> &args,
     llvm::function_ref<std::string(StringRef)> nameSharedLibrary) {

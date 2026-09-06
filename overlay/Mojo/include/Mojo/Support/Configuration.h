@@ -123,6 +123,19 @@ public:
   /// binary.
   void appendSystemLibraryLinkArgs(SmallVectorImpl<StringRef> &libs);
 
+  /// Appends the extra arguments for the link that turns an object into a
+  /// shared library. Comma separated, passed through to the linker untouched.
+  ///
+  /// This is where the libraries a shared library needs come from. ELF and
+  /// Mach-O can leave a symbol undefined and let the loader find it, so a
+  /// shared object built for them links whether or not anything else is named
+  /// on the line. COFF cannot: a DLL has to resolve everything it references
+  /// at link time, and it reaches the C runtime and the Mojo runtime through
+  /// import libraries or not at all. So a Windows target needs the search
+  /// paths and the libraries said out loud, and nothing in the compiler knows
+  /// where an install put them.
+  void appendSharedObjectLinkArgs(SmallVectorImpl<StringRef> &args);
+
   /// Appends the shared library arguments to link with Mojo when building a
   /// standalone binary.
   ///

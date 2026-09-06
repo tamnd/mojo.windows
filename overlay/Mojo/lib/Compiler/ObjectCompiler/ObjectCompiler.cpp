@@ -148,6 +148,14 @@ ObjectCompiler::create(StringRef basePath, CompilationOptions options,
 
   std::string linker = *lldPath;
 
+  // Read now, while there is a config to ask. The link that uses these happens
+  // much later and by then this object is gone, so copy the answers out rather
+  // than holding references into it.
+  SmallVector<StringRef> sharedObjectLinkArgRefs;
+  config.appendSharedObjectLinkArgs(sharedObjectLinkArgRefs);
+  std::vector<std::string> sharedObjectLinkArgs(sharedObjectLinkArgRefs.begin(),
+                                                sharedObjectLinkArgRefs.end());
+
   // Resolve the target backend once, up front. A missing backend means the
   // target is not supported by this build; fail here rather than silently
   // falling back deeper in the pipeline.
@@ -159,20 +167,22 @@ ObjectCompiler::create(StringRef basePath, CompilationOptions options,
 
   return std::unique_ptr<ObjectCompiler>(new ObjectCompiler(
       std::move(*transformCache), std::move(options), *backend, isJIT, context,
-      linker, std::move(pmOptions)));
+      linker, std::move(sharedObjectLinkArgs), std::move(pmOptions)));
 }
 
 ObjectCompiler::ObjectCompiler(RCRef<Cache::BlobCacheBackend> transformCache,
                                CompilationOptions options,
                                const TargetBackend &backend, bool isJIT,
                                MLIRContext &context, const std::string &linker,
+                               std::vector<std::string> sharedObjectLinkArgs,
                                PassManagerConfigOptions pmOptions)
     : transformCache(
           decltype(this->transformCache)::create(std::move(transformCache))),
       options(std::move(options)), backend(backend), isJIT(isJIT),
       pmOptions(std::move(pmOptions)), context(context),
       cpuDevice(*loadContext(&context)->get<AsyncRT::CPUDevice>()),
-      linker(linker) {}
+      linker(linker),
+      sharedObjectLinkArgs(std::move(sharedObjectLinkArgs)) {}
 
 //===----------------------------------------------------------------------===//
 // Time Trace Instrumentation
@@ -1368,11 +1378,11 @@ ErrorOrSuccess ObjectCompiler::emitBitcode(llvm::Module &llvmModule,
 //===----------------------------------------------------------------------===//
 
 /// Utility function for creating shared object from buf
-static ErrorOr<BufferRef> createSharedObject(BufferRef buf,
-                                             CompilationOptions options,
-                                             StringRef moduleName,
-                                             const std::string &linker,
-                                             const TargetBackend &backend) {
+static ErrorOr<BufferRef>
+createSharedObject(BufferRef buf, CompilationOptions options,
+                   StringRef moduleName, const std::string &linker,
+                   llvm::ArrayRef<std::string> extraLinkArgs,
+                   const TargetBackend &backend) {
   auto triple = llvm::Triple(options.targetTriple);
   const llvm::Triple::ObjectFormatType objectFormat = triple.getObjectFormat();
   const bool isCOFF = objectFormat == llvm::Triple::COFF;
@@ -1434,9 +1444,11 @@ static ErrorOr<BufferRef> createSharedObject(BufferRef buf,
       // load time, because COFF has neither. A DLL has to resolve every symbol
       // it references at link time, and anything it expects from the process
       // that loads it has to arrive through an import library rather than a
-      // linker flag. So a module that only refers to itself links here, and one
-      // that reaches back into the runtime does not, because there is no
-      // library path on this line for it to reach through. That is #280.
+      // linker flag. So a module that reaches outside itself needs the search
+      // paths and the libraries named, and they arrive in `extraLinkArgs` from
+      // the configuration, because an install is the only thing that knows
+      // where a C runtime lives on the machine being built for. Naming the
+      // Mojo runtime's own import library without being asked is #280.
       //
       // Nothing is said here about what the image should publish either. A COFF
       // image exports nothing unless its objects ask, and they ask before this
@@ -1463,6 +1475,9 @@ static ErrorOr<BufferRef> createSharedObject(BufferRef buf,
       args.push_back("/ALTERNATENAME:_fltused=__ImageBase");
       if (!options.emissionLinkOptions.empty())
         args.push_back(options.emissionLinkOptions.c_str());
+      // Before the object, because a search path has to be known before the
+      // thing that needs searching for shows up.
+      args.append(extraLinkArgs.begin(), extraLinkArgs.end());
       args.push_back(objFilePath.c_str());
       args.push_back(coffOutputArg.c_str());
       return args;
@@ -1475,6 +1490,7 @@ static ErrorOr<BufferRef> createSharedObject(BufferRef buf,
 
       if (!options.emissionLinkOptions.empty())
         args.push_back(options.emissionLinkOptions.c_str());
+      args.append(extraLinkArgs.begin(), extraLinkArgs.end());
       args.push_back(objFilePath.c_str());
       args.push_back("-o");
       args.push_back(sharedObjPath.c_str());
@@ -1486,6 +1502,7 @@ static ErrorOr<BufferRef> createSharedObject(BufferRef buf,
     args.push_back("-shared");
     if (!options.emissionLinkOptions.empty())
       args.push_back(options.emissionLinkOptions.c_str());
+    args.append(extraLinkArgs.begin(), extraLinkArgs.end());
     args.push_back(objFilePath.c_str());
     args.push_back("-o");
     args.push_back(sharedObjPath.c_str());
@@ -1573,7 +1590,8 @@ ErrorOrSuccess ObjectCompiler::emitSharedObject(OwningOpRef<ModuleOp> module,
 
   // Create shared object in buffer.
   ErrorOr<BufferRef> sharedObjBufOr =
-      createSharedObject(*bufOr, options, moduleName, linker, backend);
+      createSharedObject(*bufOr, options, moduleName, linker,
+                         sharedObjectLinkArgs, backend);
 
   if (sharedObjBufOr.isError())
     return sharedObjBufOr.takeError();
@@ -1621,7 +1639,9 @@ lowerLLVMModuleToObject(llvm::Module &inputModule, Location loc,
                         size_t moduleIdx, AsyncRT::CPUDevice &cpuDevice,
                         CompilationOptions options, bool isJIT,
                         bool shouldDeserialize, EmitAs emissionKind,
-                        std::string &linker, const TargetBackend &backend) {
+                        std::string &linker,
+                        llvm::ArrayRef<std::string> sharedObjectLinkArgs,
+                        const TargetBackend &backend) {
   WriteableBufferRef keyBuf = WriteableBuffer::get();
   options.print(*keyBuf << "compileLLVMModuleToObject(");
   *keyBuf << ")";
@@ -1631,6 +1651,11 @@ lowerLLVMModuleToObject(llvm::Module &inputModule, Location loc,
     *keyBuf << " emissionOptions = " << options.emissionOptions;
   if (!options.emissionLinkOptions.empty())
     *keyBuf << " emissionLinkOptions = " << options.emissionLinkOptions;
+  // The link happens inside the cached transformation below, so a change to
+  // what goes on the link line has to change the key or an object linked
+  // against the old answer gets handed back.
+  for (const std::string &arg : sharedObjectLinkArgs)
+    *keyBuf << " sharedObjectLinkArg = " << arg;
 
   size_t nonBitcodeKeySize = keyBuf->getBufferSize();
 
@@ -1639,14 +1664,16 @@ lowerLLVMModuleToObject(llvm::Module &inputModule, Location loc,
   auto runTransformation = [loc, moduleIdx, isJIT, options, &cpuDevice,
                             emissionKind, keyBuf = keyBuf.copy(), &inputModule,
                             nonBitcodeKeySize, shouldDeserialize, &backend,
-                            &linker](WriteableBufferRef buf,
-                                     AsyncRT::AnyAsyncValueRef chain) mutable {
+                            &linker, sharedObjectLinkArgs](
+                               WriteableBufferRef buf,
+                               AsyncRT::AnyAsyncValueRef chain) mutable {
     auto output = AsyncRT::AsyncValueRef<BufferRef>::allocate(cpuDevice);
 
     chain.andThenAsync([loc, &cpuDevice, emissionKind, output = output.copy(),
                         buf = buf.copy(), keyBuf = std::move(keyBuf), options,
                         isJIT, moduleIdx, &inputModule, nonBitcodeKeySize,
-                        shouldDeserialize, &backend, &linker]() mutable {
+                        shouldDeserialize, &backend, &linker,
+                        sharedObjectLinkArgs]() mutable {
       CompilerTimeTraceScope traceScope("lowerLLVMModuleToObjectKernels");
 
       LLVMModuleAndContext deserializedModule;
@@ -1758,7 +1785,8 @@ lowerLLVMModuleToObject(llvm::Module &inputModule, Location loc,
       };
       auto linkObject = [&](BufferRef object,
                             StringRef moduleName) -> ErrorOr<BufferRef> {
-        return createSharedObject(object, options, moduleName, linker, backend);
+        return createSharedObject(object, options, moduleName, linker,
+                                  sharedObjectLinkArgs, backend);
       };
       EmitContext backendCtx{options,
                              tm,
@@ -1805,7 +1833,8 @@ static std::pair<AnyAsyncValueRef, AnyAsyncValueRef> lowerLLVMModuleToObject(
     std::optional<size_t> moduleIdx, AsyncRT::CPUDevice &cpuDevice,
     CompilationOptions options, bool isJIT,
     DenseMap<uint64_t, llvm::SmallSet<EmitAs, 4>> &kernelEmissionKinds,
-    std::string &linker, SmallVector<std::pair<bool, Attribute>> &bitcodeLibs,
+    std::string &linker, llvm::ArrayRef<std::string> sharedObjectLinkArgs,
+    SmallVector<std::pair<bool, Attribute>> &bitcodeLibs,
     const TargetBackend &backend) {
   auto resultBufs =
       AsyncRT::AsyncValueRef<DenseMap<EmitAs, BufferRef>>::allocate(cpuDevice);
@@ -1816,7 +1845,8 @@ static std::pair<AnyAsyncValueRef, AnyAsyncValueRef> lowerLLVMModuleToObject(
                                      produceModule = std::move(produceModule),
                                      loc, isJIT, options, &cpuDevice,
                                      transformCache = transformCache.copy(),
-                                     &kernelEmissionKinds, &linker, &backend,
+                                     &kernelEmissionKinds, &linker,
+                                     sharedObjectLinkArgs, &backend,
                                      &bitcodeLibs]() mutable {
     CompilerTimeTraceScope traceScope("lowerLLVMModuleToObjectKernels");
 
@@ -1861,7 +1891,7 @@ static std::pair<AnyAsyncValueRef, AnyAsyncValueRef> lowerLLVMModuleToObject(
       emissionKinds.push_back(kind);
       emissionResults.push_back(lowerLLVMModuleToObject(
           *module, loc, transformCache, kernelId, cpuDevice, options, isJIT,
-          shouldDeserialize, kind, linker, backend));
+          shouldDeserialize, kind, linker, sharedObjectLinkArgs, backend));
     }
 
     if (shouldRunExtraAsm) {
@@ -1872,7 +1902,8 @@ static std::pair<AnyAsyncValueRef, AnyAsyncValueRef> lowerLLVMModuleToObject(
       // codegen result.
       emissionResults.push_back(lowerLLVMModuleToObject(
           *module, loc, transformCache, kernelId, cpuDevice, options, isJIT,
-          shouldDeserialize, EmitAs::ASM, linker, backend));
+          shouldDeserialize, EmitAs::ASM, linker, sharedObjectLinkArgs,
+          backend));
     }
 
     auto kernelBufs =
@@ -1960,7 +1991,8 @@ ObjectCompiler::emitOffloadKernels(
           std::optional<int64_t> idx, unsigned numFunctionsBase) {
         auto result = lowerLLVMModuleToObject(
             std::move(produceModule), moduleLoc, transformCache, idx, cpuDevice,
-            options, isJIT, kernelEmissionKinds, linker, bitcodeLibs, backend);
+            options, isJIT, kernelEmissionKinds, linker, sharedObjectLinkArgs,
+            bitcodeLibs, backend);
         cachedResults.push_back(std::move(result.first));
         cachedResults.push_back(std::move(result.second));
       };

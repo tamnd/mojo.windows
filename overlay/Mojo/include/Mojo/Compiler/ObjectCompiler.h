@@ -128,7 +128,7 @@ private:
   ObjectCompiler(
       RCRef<Cache::BlobCacheBackend> transformCache, CompilationOptions options,
       const TargetBackend &backend, bool isJIT, MLIRContext &context,
-      const std::string &linker,
+      const std::string &linker, std::vector<std::string> sharedObjectLinkArgs,
       PassManagerConfigOptions pmOptions = PassManagerConfigOptions());
 
   /// Lower the given LLVM module to an object file (parLLC = false) or
@@ -194,6 +194,13 @@ private:
 
   /// Name of the system linker.
   std::string linker;
+
+  /// Extra arguments for the link that turns an object into a shared library,
+  /// read from the configuration once in `create`. Owned here because the link
+  /// happens long after the config object that answered has gone, and because
+  /// the argument vector handed to the linker holds references rather than
+  /// strings.
+  std::vector<std::string> sharedObjectLinkArgs;
 
   /// Current bitcode libraries with usage tracking.
   /// Each pair contains: (used_flag, library_attribute).
