@@ -141,6 +141,14 @@ single_version_override(
     patches = [
         # FIXME: `@system_python` is a dev dep, but used in non-dev code
         "//bazel/public-patches:protobuf-dev-dep.patch",
+        # A different shape to the four Windows patches further down. Those hand
+        # cl spellings to a GNU driver. This one hands GNU library names to an
+        # MSVC target: the Windows arm of LINK_OPTS carries -lpthread and -lm,
+        # which the driver turns into pthread.lib and m.lib, and neither exists
+        # because the C runtime already provides both. It only bites when the
+        # machine driving the build is Windows, because everywhere else these
+        # code generators are built for the exec platform, which is Linux.
+        "//bazel/public-patches:protobuf_windows_link_libs.patch",
     ],
 )
 

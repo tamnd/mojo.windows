@@ -1,0 +1,19 @@
+--- a/build_defs/cpp_opts.bzl
++++ b/build_defs/cpp_opts.bzl
+@@ -40,11 +40,14 @@
+         "-lm",
+         "-framework CoreFoundation",
+     ],
++    # No -lpthread and no -lm. This arm assumes a Windows target means a MinGW
++    # toolchain, where both of those name real libraries. Here the target is
++    # MSVC, so the driver turns them into pthread.lib and m.lib, and neither
++    # exists because the C runtime already provides both. -ldbghelp stays,
++    # because dbghelp.lib is a real file in the Windows SDK.
+     "@platforms//os:windows": [
+         "-ldbghelp",
+-        "-lpthread",
+-        "-lm",
+     ],
+     "//conditions:default": [
+         "-lpthread",
+         "-lm",

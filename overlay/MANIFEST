@@ -189,6 +189,7 @@ new	-	bazel/public-patches/google_benchmark_gnu_driver_flags.patch
 new	-	bazel/public-patches/llvm_windows_absolute_symlinks.patch
 new	-	bazel/public-patches/llvm_windows_stack_flag.patch
 new	-	bazel/public-patches/mimalloc.BUILD
+new	-	bazel/public-patches/protobuf_windows_link_libs.patch
 new	-	bazel/public-patches/rules_cc_copy_dynamic_libraries_same_package.patch
 new	-	bazel/public-patches/rules_mojo_copy_dlls_to_binary.patch
 new	-	bazel/public-patches/rules_mojo_windows_libpython.patch
