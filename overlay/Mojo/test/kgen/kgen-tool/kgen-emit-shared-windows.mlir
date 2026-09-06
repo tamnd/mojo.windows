@@ -23,19 +23,17 @@
 // COM: the other end, under the name it was given.
 
 // EXPORTS: Export Table:
-// EXPORTS: exp_i32
+// EXPORTS: exp_f32
 
-// COM: The generator below takes an i32 and not the f32 the linux and darwin
-// COM: versions of this test use, and that is not an arbitrary difference. A
-// COM: module that touches floating point references `_fltused`, which lives in
-// COM: the CRT, and a COFF image has to resolve every symbol it names at link
-// COM: time. There is no COFF equivalent of leaving a symbol for the loader the
-// COM: way `-undefined dynamic_lookup` does on MachO, so the f32 version of this
-// COM: fails with `undefined symbol: _fltused` until the link gets a CRT import
-// COM: library to read. Nothing in the shared object path can paper over that,
-// COM: so this test stays inside what actually works today. That is the half of
-// COM: #134 that is still open.
+// COM: The f32 below matches the linux and darwin versions of this test, and it
+// COM: is the interesting case rather than an arbitrary one. An object with a
+// COM: function that takes or returns a float references `_fltused`, which the
+// COM: asm printer emits on its own and which the CRT would normally define. A
+// COM: COFF image has to resolve every symbol it names at link time and there
+// COM: is no CRT on this link, so this failed with `undefined symbol: _fltused`
+// COM: until the shared object link line started mapping the name onto a symbol
+// COM: the linker always defines.
 
-kgen.generator export @exp_i32(%arg: i32) -> i32 {
-  kgen.return %arg : i32
+kgen.generator export @exp_f32(%arg: f32) -> f32 {
+  kgen.return %arg : f32
 }

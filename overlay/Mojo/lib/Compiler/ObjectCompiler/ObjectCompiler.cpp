@@ -829,7 +829,7 @@ translateModuleToLLVMIR(llvm::LLVMContext &ctx, ModuleOp module,
 /// graph slicing left behind and nothing else has to be said. COFF has no such
 /// default. A DLL exports exactly the symbols its objects asked to export, and
 /// an object asks by marking them, so without this a Mojo shared library on
-/// Windows links, loads, and has an empty export table. Half of #134.
+/// Windows links, loads, and has an empty export table.
 ///
 /// The set marked here is the set the other two formats would publish: every
 /// definition that is still externally visible once the slicing has run.
@@ -1435,15 +1435,32 @@ static ErrorOr<BufferRef> createSharedObject(BufferRef buf,
       // it references at link time, and anything it expects from the process
       // that loads it has to arrive through an import library rather than a
       // linker flag. So a module that only refers to itself links here, and one
-      // that reaches back into the runtime does not, which is the half of #134
-      // that is still open. The other half, that a COFF image exports nothing
-      // unless the object says so, is handled before this by
-      // `markDefinitionsForCOFFExport`, so there is nothing to say on the
-      // command line about what the image should publish.
+      // that reaches back into the runtime does not, because there is no
+      // library path on this line for it to reach through. That is #280.
+      //
+      // Nothing is said here about what the image should publish either. A COFF
+      // image exports nothing unless its objects ask, and they ask before this
+      // in `markDefinitionsForCOFFExport`.
       SmallVector<StringRef> args = {linker, "-flavor", linkerFlavor};
       backend.appendLinkArgs(args, options);
       args.push_back("/DLL");
       args.push_back("/NOENTRY");
+      // `_fltused` is the one symbol that arrives without anybody asking for
+      // it. The x86 and AArch64 asm printers emit a reference to it from any
+      // object whose module has a function that takes or returns a floating
+      // point value, and there is no way to ask them not to. It used to matter
+      // on 32 bit x86, where it pulled in the part of the CRT that set up the
+      // x87 control word. On the targets here nothing reads it and it is only
+      // a marker, but a marker still has to resolve, and an image linked
+      // without a CRT has nothing to resolve it against.
+      //
+      // So point it at something that is always defined. `__ImageBase` is
+      // synthesised by the linker in every COFF image, and `/ALTERNATENAME`
+      // only applies to a name that is still undefined at the end of the link,
+      // which means this stops doing anything the moment a real CRT is on the
+      // line. Nothing dereferences the symbol, so where it points is not
+      // interesting, only that it points somewhere.
+      args.push_back("/ALTERNATENAME:_fltused=__ImageBase");
       if (!options.emissionLinkOptions.empty())
         args.push_back(options.emissionLinkOptions.c_str());
       args.push_back(objFilePath.c_str());
