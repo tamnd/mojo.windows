@@ -1,0 +1,40 @@
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -313,12 +313,32 @@
+             "@platforms//os:linux": ["-DCURL_OS=\"linux\""],
+             "@platforms//os:windows": ["-DCURL_OS=\"windows\""],
+             "//conditions:default": ["-DCURL_OS=\"unknown\""],
+-        }),
+-        defines = defines,
+-        includes = [
+-            "include",
+-            "lib",
++        }) + [
++            # lib is curl's own source directory, and it used to be on the
++            # includes attribute below, which propagates. Every target that
++            # reached curl anywhere in its dependency graph got
++            # -isystem external/curl+/lib on its command line, and the CRT and
++            # the SDK between them own a few thousand short generic header
++            # names that curl also uses. Microsoft's <xiosbase> says
++            # #include <share.h> and means the CRT's; it was getting curl's,
++            # which includes curl_setup.h, which on Windows includes winsock2.h
++            # and so the whole of windows.h. That is how <sstream> came to
++            # define IGNORE in every translation unit in the compiler.
++            #
++            # curl includes its own headers with quotes and never with angle
++            # brackets, so -iquote is enough for curl and invisible to everyone
++            # else. copts do not propagate, which is the entire point.
++            #
++            # The directory has to be spelled out because copts are relative to
++            # the execroot and there is no make variable for a repository root.
++            # external/curl+ is the canonical name bzlmod gives one version of
++            # this module. If that ever changes, the first curl source file
++            # fails to find curl_setup.h and says so.
++            "-iquote",
++            "external/curl+/lib",
+         ],
++        defines = defines,
++        includes = ["include"],
+         linkopts = select({
+             ":use_sectransport": [
+                 "-Wl,-framework,CoreFoundation",

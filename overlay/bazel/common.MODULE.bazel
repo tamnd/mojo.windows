@@ -221,11 +221,22 @@ single_version_override(
 # there is no error and no diagnostic, the library simply never reaches the linker.
 # A flag that silently means something else is worse than one that fails, so it is
 # worth knowing that this shape exists before spending a day on a missing symbol.
+#
+# The second patch is a different problem and a much larger one. curl's BUILD file
+# put lib, its own source directory, on the includes attribute, which propagates to
+# everything that reaches curl anywhere in its dependency graph. On a Windows target
+# that means Microsoft's STL reads curl's lib/share.h where it means the CRT's, and
+# gets the whole of windows.h behind it, so <sstream> quietly defines IGNORE and a
+# few hundred other short names in every translation unit that includes it. See #300.
+# The patch moves the directory to a -iquote copt, which is enough for curl, since
+# curl includes its own headers with quotes, and reaches nothing else, since copts do
+# not propagate.
 single_version_override(
     module_name = "curl",
     patch_strip = 1,
     patches = [
         "//bazel/public-patches:curl_gnu_driver_flags.patch",
+        "//bazel/public-patches:curl_private_lib_includes.patch",
     ],
 )
 

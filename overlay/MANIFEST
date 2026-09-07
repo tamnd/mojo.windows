@@ -206,6 +206,7 @@ new	-	bazel/public-patches/clang-windows.BUILD
 edit	2d31d8cec964928e2dce710017e9021c24c9e61a	bazel/public-patches/clang.BUILD
 edit	5c97c045b3cd8aa6e59aa4706665ee70e85ac8ca	bazel/public-patches/crashpad.BUILD
 new	-	bazel/public-patches/curl_gnu_driver_flags.patch
+new	-	bazel/public-patches/curl_private_lib_includes.patch
 new	-	bazel/public-patches/google_benchmark_gnu_driver_flags.patch
 new	-	bazel/public-patches/llvm_windows_absolute_symlinks.patch
 new	-	bazel/public-patches/llvm_windows_stack_flag.patch

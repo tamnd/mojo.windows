@@ -95,6 +95,14 @@ The copy is not a straight rsync of the splat. It drops every symlink, because x
 
 The compiler's include search is closed, which matters more on a Windows host than it does when cross compiling. `-nostdinc` is on for Windows targets, so clang looks only in the directories the toolchain names. Without it, clang finds the Visual Studio and Windows SDK installed on the machine and puts them ahead of everything `-idirafter` names, and the compile reads those instead of the sysroot. Bazel catches that and refuses the compile for including files by absolute path that nothing in the toolchain declared, which is the check doing its job. If it did not catch it, two machines with different Visual Studio versions would quietly compile different code. On a Linux host the flag changes nothing, because there is no MSVC there for clang to find.
 
+### Who owns a short header name
+
+The order the toolchain uses is clang's own headers first, then everything a target puts on for itself, then the sysroot. The sysroot goes on with `-idirafter`, which is what puts it last while still treating it as a system directory so its warnings stay off. That order is deliberate and `bazel/internal/cc-toolchain/BUILD.bazel` says why at length: a target's own headers have to beat the SDK, or a third party library stops finding its own files the moment the SDK happens to ship a header with the same name.
+
+The other half of that only shows up when the compiler itself is built for Windows, which is new. The CRT and the SDK between them own a few thousand short generic header names, and `share.h` is one of them. curl also ships a `lib/share.h`, and curl's build file had `lib` on its `includes` attribute, which propagates to every target that reaches curl anywhere in its dependency graph. So Microsoft's `<xiosbase>` said `#include <share.h>`, meant the CRT's, and got curl's, which includes `curl_setup.h`, which on Windows includes `winsock2.h` and therefore all of `windows.h`. The visible result was that `<sstream>` defined `IGNORE` in every translation unit in the compiler, and 35 files failed to parse an enumerator by that name.
+
+Both directions of the same collision, and they are fixed in different places. The order above decides who wins between the sysroot and a target's own include directories. Whether a private source directory is a target's include directory at all is decided in that target's build file, and for curl the answer is now no: `bazel/public-patches/curl_private_lib_includes.patch` moves it to a `-iquote` copt, which is enough for curl, because curl includes its own headers with quotes, and reaches nothing else, because copts do not propagate. See #300.
+
 ### When it fails
 
 Two failures are worth naming because neither error message points at the cause.

@@ -111,6 +111,15 @@ cc_sysroot(
 # The CRT and the SDK between them own a few thousand short generic header names, and under
 # -isystem every one of those is a name a first or third party header cannot safely use.
 #
+# Worth reading with #300 next to it, which is the same collision seen from the other end.
+# curl was also publishing that share.h to every target that reached curl at all, so with
+# the order below correct, Microsoft's own <xiosbase> read curl's file where it meant the
+# CRT's. Both directions of that are now settled, and they are settled in different places:
+# the order here decides who wins between the sysroot and a target's own directories, and
+# curl's build file decides whether curl's private directory is a target's own directory in
+# the first place. It is not, and once it is not, the order below is the only thing left
+# that has to be right.
+#
 # The resource directory entry below is now redundant, since -idirafter puts the sysroot
 # behind the builtin directory whether we name it or not. It stays because it says out loud
 # that clang's headers have to come first, and a line that states a requirement is worth
