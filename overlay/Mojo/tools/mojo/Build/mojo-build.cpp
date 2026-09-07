@@ -912,13 +912,16 @@ static int linkOutput(OutputType outputType, const State &state,
       return (inputBaseName + ".asm").str();
     }
   }();
-  // Validate this is a valid filename using the `path` ctor.
-  defaultOutputName = std::filesystem::path(defaultOutputName).filename();
+  // Validate this is a valid filename using the `path` ctor. The `string()`
+  // calls here and below are not decoration. A path converts to a std::string
+  // implicitly only where its value_type is char, and on Windows it is wchar_t.
+  defaultOutputName =
+      std::filesystem::path(defaultOutputName).filename().string();
 
   std::error_code ec;
   std::filesystem::path cwd = std::filesystem::current_path(ec);
   if (!ec)
-    defaultOutputName = cwd.append(defaultOutputName);
+    defaultOutputName = cwd.append(defaultOutputName).string();
 
   // Invoke the system linker to link the archive into an executable or produce
   // a dynamic library using the provided output filename argument. The

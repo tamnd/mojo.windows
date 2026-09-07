@@ -23,6 +23,7 @@ new	-	Mojo/examples/windows-hello/BUILD.bazel
 new	-	Mojo/examples/windows-hello/hello.mojo
 edit	dfc20ff2f28d031b0c2dbf736220e518279caffd	Mojo/include/Mojo/Compiler/ObjectCompiler.h
 edit	c05a79e83f9d92be0834751dcc5f22a24682a19f	Mojo/include/Mojo/Support/Configuration.h
+edit	d12b71eaa4fadbe8518471aca87b3a54c67db6af	Mojo/include/Mojo/TransformUtils/ManglingUtils.h
 edit	59f6f330c21fe83dc6241eb535e4692521d45656	Mojo/lib/Compiler/ObjectCompiler/ObjectCompiler.cpp
 edit	d916230e014c471d175bdaff41f1d9eed6184b55	Mojo/lib/CompilerRT/Memory.h
 edit	d9f712923d162a14e6d7618bd9838221c4310878	Mojo/lib/CompilerRT/Python.cpp
@@ -31,6 +32,7 @@ edit	3be1f0d71246e8f079a5695fd1c881cea6d3db1e	Mojo/lib/KGENToLLVM/CABILowering.c
 edit	2d04b3c80d840066ae526e282562f8aec44c1f41	Mojo/lib/KGENToLLVM/CABILowering.h
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.cpp
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.h
+edit	6cdc5101a5ba26a2172f191c4226da4a55d617ca	Mojo/lib/MojoTooling/ParserDriver.cpp
 edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
 edit	f8b296f497d7449267a8c8b04c1d24df8c7af664	Mojo/lib/ToolCommon/CompilationOptions/CompilationOptions.cpp
 edit	ac3f9993af6adee81672728007a903f5434fd7e3	Mojo/stdlib/std/builtin/_startup.mojo
@@ -116,7 +118,9 @@ new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_cpu.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_link_line.mojo
 edit	72cae2136da1542c64670923232b36ffac55f6a5	Mojo/tools/mojo/Build/mojo-build.cpp
+edit	dd482633af2ded4d888659d652a69d7b49fd8646	Mojo/tools/mojo/Debug/RPCClient.cpp
 edit	9958fb19c8e9b86a4636b088a591b381170417fe	Mojo/tools/mojo/DriverOptions.td
+edit	5d255ab6902dce344cf14557b281944cc289fce7	Mojo/tools/mojo/Precompile/mojo-precompile.cpp
 edit	6a0a7177454759e42b039250e13718ac1b425929	Mojo/tools/mojo/Run/mojo-run.cpp
 edit	e3376e74de03f0d0b2b99e312639ba548d060ec7	Mojo/tools/mojo/mojo.cpp
 edit	ed0961200dc215798abd226500fb6652adab461c	Support/BUILD.bazel
