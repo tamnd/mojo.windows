@@ -256,9 +256,15 @@ modular_cc_library(
         "include/Support/Context.h",
         "include/Support/ContextGlobal.h",
     ],
-    # Context.cpp defines the members Context.h declares with MODULAR_CXX_EXPORT,
-    # so this target is a definer too. Same reasoning as Globals below.
-    local_defines = ["MODULAR_BUILDING_LIBRARY"],
+    # No MODULAR_BUILDING_LIBRARY here. It used to be, because Context.h marked
+    # the destructor MODULAR_CXX_EXPORT and Context.cpp is where the destructor
+    # is, so on the face of it this target was a definer. It is not, because this
+    # target is a static library and there is no DLL for those two words to mean
+    # anything about. Every consumer links this object directly and got told to
+    # look for an import that no import library has. The declaration says
+    # MODULAR_CXX_STATIC_VISIBLE now, and the two functions this file calls out of
+    # ContextGlobal.h really do live in MSupportGlobals.dll, so leaving the define
+    # off is what makes those come out as imports.
     deps = [
         ":ADT",
         ":Base",
@@ -1198,33 +1204,27 @@ modular_shared_library(
         "@platforms//os:macos": [
             "-Wl,-u,__ZN4mlir6detail22FallbackTypeIDResolver22registerImplicitTypeIDEN4llvm9StringRefE",
         ],
-        # Same symbol, in the MSVC decoration instead of the Itanium one, and it takes
-        # two flags rather than one because Windows splits the job the other two arms
-        # do in a single flag. /INCLUDE pulls the object out of the MLIR static library,
-        # which is what --undefined and -u are doing above. /EXPORT then puts it in the
-        # DLL export table, which on ELF and Mach-O comes free with default visibility
-        # and on Windows never happens unless you ask. The dllexport in
-        # include/Support/SymbolExport.h does not reach this one, because the function
-        # belongs to MLIR rather than to us.
+        # Nothing on Windows, and the reason is the mechanism rather than the
+        # spelling. What the other two arms buy is not a copy of the function in the
+        # shared library, it is that every other module in the process stops using
+        # its own copy and uses that one. ELF and Mach-O do that themselves: a global
+        # symbol defined in more than one loaded module resolves to one of them for
+        # everybody. Windows has no such rule. A module reaches a symbol in a DLL
+        # only if it was compiled to look for it there, and mlir/Support/TypeID.h
+        # declares this function plainly, so nothing ever will be.
         #
-        # The name was not written by hand. Namespace back references make that a good
-        # way to produce a name that never matches anything: the mlir in VTypeID@3@ is
-        # a back reference, not a literal, so the obvious guess is wrong. It came out of
-        # compiling the declaration from mlir/include/mlir/Support/TypeID.h for both
-        # targets and reading the undefined symbol back out of each object file. The
-        # Itanium side of that came out byte for byte identical to the Linux arm above,
-        # which is the check that the declaration was reproduced correctly.
+        # This did have the two flags that spell it, /INCLUDE to pull TypeID.obj out
+        # of the MLIR static library and /EXPORT to put the symbol in the DLL export
+        # table. Both worked. What they produced was a DLL exporting a function no
+        # caller could be pointed at, and every executable that links both MLIR and
+        # this DLL getting the same symbol twice, once from TypeID.obj and once from
+        # the import library. That is eight link failures and no upside.
         #
-        # Both are -Wl, prefixed because linkopts go to the compiler driver, not to the
-        # linker, and this build drives clang in GNU mode. A bare /INCLUDE: is read as a
-        # path and comes back as "no such file or directory", which is the same shape
-        # zlib-ng, curl and boringssl all produced. -Wl, is what hands it to lld-link
-        # unchanged. Neither name contains a comma, which is the one thing that would
-        # make this spelling wrong.
-        "@platforms//os:windows": [
-            "-Wl,/INCLUDE:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
-            "-Wl,/EXPORT:?registerImplicitTypeID@FallbackTypeIDResolver@detail@mlir@@KA?AVTypeID@3@VStringRef@llvm@@@Z",
-        ],
+        # So on Windows each module keeps its own copy and MLIR type identity does
+        # not survive a module boundary. That is a real gap and it is #294. The fix
+        # is on the other side of it: one shared MLIR, rather than a static MLIR in
+        # every module and a trick to make the copies agree.
+        "@platforms//os:windows": [],
     }),
     # This is the "missing define conditionals for symbol visibility" the note at
     # the bottom of this target used to describe, so the note is gone and this is
