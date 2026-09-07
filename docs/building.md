@@ -274,6 +274,12 @@ Sitting behind that was a bug of ours. `mojo_test_environment` walks the Mojo to
 
 Between the two, `windows-analysis-allowlist.txt` is empty. See #223.
 
+Two things worth knowing about what that default arm costs. The first is that it costs the compiler nothing, because the compiler never reaches the wheel: `somepath(//Mojo/tools/mojo, @modular_wheel//:all)` comes back empty, and neither do the tier 0 or tier 1 standard library tests, which is why they run at all on Windows. The second is that `//Mojo:CompilerRT` looks like it should reach it and does not. `bazel/api.bzl` rewrites that dependency into a `select` between the source target and the wheel's `CompilerRT_lib`, and the arm it takes is decided by `--config=build-mojo`, which is the only config this port ever builds with. The wheel arm exists for a build that starts from a released compiler, and that build cannot work on Windows for a more basic reason than this one.
+
+What does end up incompatible is what genuinely needs MAX: anything importing one of the internal MAX Mojo packages, and anything reaching `DeviceContext` through `//MLRT:Driver/DeviceContext`. Those come back skipped rather than failing, which is the accurate answer for a platform MAX does not build for.
+
+`scripts/check-windows-analysis.sh` names `@modular_wheel//:all` in its target list so that all of this stays true. Analysing the aliases directly is the point: a select that loses its default does not fail in the file that lost it, it fails in whatever reached it, and that is a much longer walk back to the cause. See #115.
+
 ## Long paths use the prefix, not the manifest
 
 Windows limits a path to 260 characters counting the drive letter and the terminator, and a directory to 248 so that an 8.3 name still fits inside it. That is a limit on the whole string rather than on any one name, so an ordinary tree that is deep enough runs into it with ordinary names in it, and a Bazel output tree is exactly that shape.

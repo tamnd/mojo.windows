@@ -38,7 +38,15 @@ mapfile -t patterns < <("$REPO_ROOT/scripts/test-tier.sh" 0 --print
 
 # The compiler itself goes in on top of the tiers. It is the one target whose Windows
 # analysis breaking would be invisible in a list of standard library tests.
-targets=("//Mojo/tools/mojo" "${patterns[@]}")
+#
+# The wheel aliases go in for a different reason. Every target in @modular_wheel is an
+# alias picking between the three platforms Modular publishes the MAX wheel for, and
+# Windows is not one of them, so all of them lean on the default arm added in #223. The
+# thing about a select losing its default is that it does not fail where the mistake is.
+# It fails in whatever reaches it, which is how one missing arm took out a whole package
+# of standard library tests the first time. Naming the aliases directly puts the failure
+# back on the file that caused it. See #115.
+targets=("//Mojo/tools/mojo" "@modular_wheel//:all" "${patterns[@]}")
 
 info "analyzing ${#targets[@]} target patterns for the Windows platform"
 
