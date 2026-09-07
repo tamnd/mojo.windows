@@ -147,6 +147,15 @@ def _open_file(path: String, mode: String) raises -> Int:
                     + "': "
                     + String(e)
                 )
+            # `parent` is held past the handler above on purpose. Its last use
+            # is an argument of a call that raises, so it is destroyed on the
+            # way out of that call, and naming it inside the handler does not
+            # count as a use. The message would then read a slot something else
+            # has taken: on Linux the old bytes are usually still there and the
+            # path comes out right by luck, on Windows the allocator scrubs
+            # them and the path is a run of 0xDF the right length. A use after
+            # the handler is what holds the value across it. See #207.
+            _ = parent^
 
     # int open(const char *path, int oflag, ...);
     # Mode 0o666 allows read/write for owner, group, and others (modified by
