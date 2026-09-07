@@ -18,6 +18,7 @@ edit	3e759c983d077baf7c997c07f8322a426a02a2e8	BUILD.bazel
 edit	ad5d85aa897cbf31a7767237adb8dba2aa3570c3	Config/include/Config/Version.h
 edit	6acb9727246db7b58efcfdfe27ac2338d5c7d015	Config/include/GeneratedVersion.h.tmpl
 edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
+edit	7d275470d9c2b2b61a95d9e21a7278cbf010fabd	Init/lib/DevelopmentSignalHandler.cpp
 edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 new	-	Mojo/examples/windows-hello/BUILD.bazel
 new	-	Mojo/examples/windows-hello/hello.mojo
@@ -33,6 +34,7 @@ edit	2d04b3c80d840066ae526e282562f8aec44c1f41	Mojo/lib/KGENToLLVM/CABILowering.h
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.cpp
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.h
 edit	6cdc5101a5ba26a2172f191c4226da4a55d617ca	Mojo/lib/MojoTooling/ParserDriver.cpp
+edit	a5a4232d700d03091c555b3313b1bd0f0440c6b2	Mojo/lib/POPDialect/POPOpsFolders.cpp
 edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
 edit	f8b296f497d7449267a8c8b04c1d24df8c7af664	Mojo/lib/ToolCommon/CompilationOptions/CompilationOptions.cpp
 edit	ac3f9993af6adee81672728007a903f5434fd7e3	Mojo/stdlib/std/builtin/_startup.mojo

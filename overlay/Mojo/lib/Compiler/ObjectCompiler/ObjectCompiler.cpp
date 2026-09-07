@@ -75,7 +75,9 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
-#include <dlfcn.h>
+// <dlfcn.h> used to be here.  Nothing in this file calls dlopen, dlsym,
+// dladdr or anything else out of it, so rather than give Windows a platform
+// branch for a header it does not have, the include is gone.
 #include <fstream>
 #include <string>
 
@@ -1444,6 +1446,11 @@ createSharedObject(BufferRef buf, CompilationOptions options,
   // the argument vector below because that vector holds references.
   std::string coffOutputArg = "/out:" + sharedObjPath.string();
 
+  // The ELF and MachO branches want the same path on its own, and for the same
+  // reason it has to be a string that outlives the vector.  path::c_str() will
+  // not do: it hands back the native character type, which is wchar_t here.
+  std::string sharedObjPathArg = sharedObjPath.string();
+
   // Call lld to generate a dynamic library.
   // For ELF:
   //  ld.lld -shared tmp.o -o tmp.so
@@ -1512,7 +1519,7 @@ createSharedObject(BufferRef buf, CompilationOptions options,
       args.append(extraLinkArgs.begin(), extraLinkArgs.end());
       args.push_back(objFilePath.c_str());
       args.push_back("-o");
-      args.push_back(sharedObjPath.c_str());
+      args.push_back(sharedObjPathArg);
       return args;
     }
     // Build ELF linker args, plus any backend-specific arguments.
@@ -1524,7 +1531,7 @@ createSharedObject(BufferRef buf, CompilationOptions options,
     args.append(extraLinkArgs.begin(), extraLinkArgs.end());
     args.push_back(objFilePath.c_str());
     args.push_back("-o");
-    args.push_back(sharedObjPath.c_str());
+    args.push_back(sharedObjPathArg);
     return args;
   }();
 
@@ -1573,7 +1580,7 @@ createSharedObject(BufferRef buf, CompilationOptions options,
   // Save to temp file if needed.
   if (failed(writeBytesToTempWithHash(
           options.saveTempsPrefix,
-          std::string(".") + sharedObjPath.stem().c_str() + libOutExt.str(),
+          std::string(".") + sharedObjPath.stem().string() + libOutExt.str(),
           (*sharedObjBufOr)->getBuffer())))
     return Error("failed to write shared object binary to saveTemps");
 
