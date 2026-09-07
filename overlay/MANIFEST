@@ -23,6 +23,7 @@ edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 new	-	Mojo/examples/windows-hello/BUILD.bazel
 new	-	Mojo/examples/windows-hello/hello.mojo
 edit	dfc20ff2f28d031b0c2dbf736220e518279caffd	Mojo/include/Mojo/Compiler/ObjectCompiler.h
+edit	00a7a76a521d3dd863bb30f4d815061321d70859	Mojo/include/Mojo/MojoParser/CallOperands.h
 edit	c05a79e83f9d92be0834751dcc5f22a24682a19f	Mojo/include/Mojo/Support/Configuration.h
 edit	d12b71eaa4fadbe8518471aca87b3a54c67db6af	Mojo/include/Mojo/TransformUtils/ManglingUtils.h
 edit	59f6f330c21fe83dc6241eb535e4692521d45656	Mojo/lib/Compiler/ObjectCompiler/ObjectCompiler.cpp
@@ -33,6 +34,9 @@ edit	3be1f0d71246e8f079a5695fd1c881cea6d3db1e	Mojo/lib/KGENToLLVM/CABILowering.c
 edit	2d04b3c80d840066ae526e282562f8aec44c1f41	Mojo/lib/KGENToLLVM/CABILowering.h
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.cpp
 new	-	Mojo/lib/KGENToLLVM/CABIWin64.h
+edit	dbfd6f18d75d1f71b2c730a941d737c06b510721	Mojo/lib/KGENToLLVM/LLVMLoweringUtils.cpp
+edit	f3f54267873878dc2f3847855a01c92302d312f5	Mojo/lib/KGENToLLVM/LowerKGENClosuresToLLVM.cpp
+edit	80d7039ad9d5935e3526003c60c64bd2ffabcb2a	Mojo/lib/KGENToLLVM/LowerKGENToLLVMRewriteCABIFns.cpp
 edit	6cdc5101a5ba26a2172f191c4226da4a55d617ca	Mojo/lib/MojoTooling/ParserDriver.cpp
 edit	a5a4232d700d03091c555b3313b1bd0f0440c6b2	Mojo/lib/POPDialect/POPOpsFolders.cpp
 edit	e4ea1cd8da1989840e94b0ebdd521d5fff9ef88a	Mojo/lib/Support/Configuration.cpp
