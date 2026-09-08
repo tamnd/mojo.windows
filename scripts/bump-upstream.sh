@@ -53,8 +53,11 @@ git fetch --filter=blob:none --tags --force origin
 
 if [ "$MODE" = branch ]; then
   NEW_REF="refs/heads/$TARGET"
-  NEW_TAG="$TARGET"
   NEW_COMMIT="$(git rev-parse "origin/$TARGET")"
+  # Not the branch name. A branch name is not a version and it does not stay
+  # still, and this tag is what every issue, release note and error message ends
+  # up quoting. Describe gives the same shape the tag and commit modes give.
+  NEW_TAG="$(git describe --tags --always "$NEW_COMMIT" 2>/dev/null || printf '%s' "${NEW_COMMIT:0:12}")"
 elif [ "$MODE" = commit ]; then
   NEW_COMMIT="$(git rev-parse -q --verify "$TARGET^{commit}")" || die "no such commit upstream: $TARGET"
   NEW_REF="$NEW_COMMIT"

@@ -69,7 +69,7 @@ edit	1283b33d203cf624d4e384b49c657ed1d0524548	Mojo/stdlib/std/tempfile/tempfile.
 edit	96a06ca9fa662f93e00f6bfee2901eab54fe0d1a	Mojo/stdlib/std/testing/assert_aborts.mojo
 edit	5439bdaef796e82aacd354d0e674d5f4d62bbbb8	Mojo/stdlib/std/time/time.mojo
 edit	bef2f1535fd2c3677fc00316698507d2718a70e7	Mojo/stdlib/std/utils/_ansi.mojo
-edit	6e1144168275b6a5d1ff15184371a1933bce98c9	Mojo/stdlib/test/builtin/BUILD.bazel
+edit	7e39cf55506ae38ae0d029770cd87defb9358b97	Mojo/stdlib/test/builtin/BUILD.bazel
 edit	784b617c1c9bbb8dab1ba4e02448e1ad648959b2	Mojo/stdlib/test/builtin/test_file.mojo
 edit	d972135af03b425fe9ead0001946e30a3bded628	Mojo/stdlib/test/ffi/test_external_call.mojo
 edit	cd278e1c94ad17736bedb08b14dad8ac70b2cc26	Mojo/stdlib/test/io/BUILD.bazel
@@ -168,7 +168,7 @@ edit	503c1d2fe2f55de30af154f45537788c9906daae	Support/unittests/Log/SpanGuardTes
 new	-	Support/unittests/PlatformLibNamesTest.cpp
 edit	c9adff23d9a2801c8c03220209b3d2fcead1aede	Support/unittests/TelemetryTest.cpp
 edit	89d6d145bfd81c68ccc082d95bcede0896d545da	bazel/api.bzl
-edit	774a4f8fe6035ef5b580ca83876cc3828ee239a4	bazel/common.MODULE.bazel
+edit	3bf388d7b2dd9cb1a98af3b4626e365e83ed1ad1	bazel/common.MODULE.bazel
 edit	586cd6589ac54d9adfa57362c41dc733abe08071	bazel/config.bzl
 edit	dc4d8098c3daecda2047b418956f8994cedd95ac	bazel/internal/BUILD.bazel
 edit	a91387bbbd00ab37c6ab446ba5ece42de45e3042	bazel/internal/cc-toolchain/BUILD.bazel
@@ -228,7 +228,6 @@ new	-	bazel/public-patches/rules_cc_copy_dynamic_libraries_same_package.patch
 new	-	bazel/public-patches/rules_cc_shared_library_param_file.patch
 new	-	bazel/public-patches/rules_mojo_copy_dlls_to_binary.patch
 new	-	bazel/public-patches/rules_mojo_windows_libpython.patch
-new	-	bazel/public-patches/rules_mypy_types_exec.patch
 new	-	bazel/public-patches/zlib_ng_gnu_driver_copts.patch
 new	-	bazelw.bat
 new	-	bazelw.ps1

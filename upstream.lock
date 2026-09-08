@@ -1,10 +1,10 @@
 {
   "$comment": "Pinned upstream. Everything in overlay/ is written against exactly this commit. Do not edit by hand, use scripts/bump-upstream.sh.",
   "repo": "https://github.com/modular/modular.git",
-  "ref": "9aba62be844d73b574a4283a1a8ce760f9843134",
-  "tag": "modular/v25.7.0-29742-g9aba62be84",
-  "commit": "9aba62be844d73b574a4283a1a8ce760f9843134",
-  "pinned_at": "2026-09-02",
+  "ref": "refs/heads/main",
+  "tag": "modular/v25.7.0-29887-g2b47eeef01",
+  "commit": "2b47eeef01fd2d85269184ced847dc75d2c5040a",
+  "pinned_at": "2026-09-08",
   "license": "Apache-2.0 WITH LLVM-exception",
   "audit_commit": "9aba62be844d73b574a4283a1a8ce760f9843134",
   "audit_note": "The source audit behind docs/ was done against audit_commit, which was main at the time. Line numbers quoted in docs and issues are relative to that commit and drift. File paths and quoted code are the durable part."

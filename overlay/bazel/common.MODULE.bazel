@@ -106,14 +106,9 @@ archive_override(
         "//bazel/public-patches:rules_mypy_pyi_files.patch",
         # https://github.com/bazel-contrib/rules_mypy/pull/141
         "//bazel/public-patches:rules_mypy_transitives.patch",
-        # The type stub attributes resolve in the target configuration, which is
-        # wrong on its own terms, since mypy runs on the machine doing the build
-        # and so do the stubs it reads. It only shows up when the target and the
-        # host differ, and the first time that happens here is cross compiling to
-        # Windows, where it stops the build during loading with a complaint about
-        # a pyyaml wheel and no mention of mypy at all. _mypy_cli next door is
-        # already cfg = "exec" for the same reason.
-        "//bazel/public-patches:rules_mypy_types_exec.patch",
+        # The aspect applies to every top-level target, so target-configured
+        # type stubs make any cross-compile fail during loading. TODO: upstream.
+        "//bazel/public-patches:rules_mypy_exec_types.patch",
     ],
     strip_prefix = "rules_mypy-0.41.0",
     urls = [

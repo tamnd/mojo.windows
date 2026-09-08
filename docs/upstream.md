@@ -121,6 +121,6 @@ Switch the default back to release tags the moment upstream tags one that carrie
 
 ## What is pinned right now
 
-See `upstream.lock`. As of writing, upstream `main` at `9aba62be`.
+See `upstream.lock`. As of writing, upstream `main` at `2b47eeef`.
 
 That is the same commit the source audit behind these documents was done against, which is a happy accident rather than a plan. It does mean the line numbers quoted in the issues and documents are accurate as of the pin rather than approximately right. They will still drift as the pin moves, so if a line number does not match, search for the quoted snippet. File paths and quoted code are the durable part.
