@@ -11,6 +11,7 @@
 
 edit	ee45aec40b8361545723a12f9b00a0439883d629	.bazelrc
 edit	f34e1d3277d9da00bfc05129aadc9d077d2c8437	AsyncRT/include/AsyncRT/Runtime/Globals/Globals.h
+edit	967be2271d8e40b8c68968b5b35fd3db29de9a13	AsyncRT/include/AsyncRT/Runtime/HostSystem.h
 edit	503e13d1963e0cea956b5a564c244d947af49744	AsyncRT/lib/Runtime/Globals/Globals.cpp
 edit	02b22370dd0a493fe9d83ae28dd9708a654f297f	AsyncRT/lib/Support/Semaphore.cpp
 edit	56ced06d65d8d56b04f2f6b3fce0b98423a0dcfc	AsyncRT/lib/Support/ThreadAffinity.cpp
@@ -18,6 +19,7 @@ edit	3e759c983d077baf7c997c07f8322a426a02a2e8	BUILD.bazel
 edit	ad5d85aa897cbf31a7767237adb8dba2aa3570c3	Config/include/Config/Version.h
 edit	6acb9727246db7b58efcfdfe27ac2338d5c7d015	Config/include/GeneratedVersion.h.tmpl
 edit	8b4b20b4b347f1bd4145606adbb46565dc19c30a	Config/lib/Version.cpp
+edit	5ba9728d15bf6b5e84e5f95fe51d9fbedd76f4d2	Init/include/Init/Init.h
 edit	7d275470d9c2b2b61a95d9e21a7278cbf010fabd	Init/lib/DevelopmentSignalHandler.cpp
 edit	fd9f89be0dc27ce61cfc6b132e06b03eb0e5b1a8	MODULE.bazel
 new	-	Mojo/examples/windows-hello/BUILD.bazel
