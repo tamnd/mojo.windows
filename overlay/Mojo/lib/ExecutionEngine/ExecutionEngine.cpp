@@ -15,6 +15,7 @@
 #include "Mojo/ExecutionEngine/JIT/StaticArchiveLayer.h"
 #include "Mojo/Support/Configuration.h"
 #include "Support/ErrorOr.h"
+#include "llvm/ExecutionEngine/JITLink/JITLink.h"
 #include "llvm/ExecutionEngine/Orc/AbsoluteSymbols.h"
 #include "llvm/ExecutionEngine/Orc/COFFPlatform.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
@@ -155,6 +156,62 @@ initializeCompilerRT(llvm::orc::ExecutionSession &session,
   return success();
 }
 
+namespace {
+/// Drops the exception unwinding tables out of every COFF object the JIT links.
+///
+/// A `.pdata` entry is three 32 bit offsets from the image base, and a linker
+/// writes one by taking the address of what the entry describes and subtracting
+/// the address of `__ImageBase`. JIT'd code is not in an image and has no base
+/// to subtract, so JITLink invents `__ImageBase` as an undefined external,
+/// nothing ever defines it, its address stays zero, and the subtraction leaves
+/// the whole 64 bit address to be squeezed into 32 bits. The link then fails on
+/// the first function that has unwind info, which is every function.
+///
+/// Nothing would read these tables even if they made it through. Handing them
+/// to Windows is the ORC COFF platform's job and no platform is created here,
+/// so they are relocated and then left for nobody. Dropping them costs what not
+/// registering them already costs, which is that a Windows debugger cannot walk
+/// out of a JIT'd frame.
+class COFFUnwindSectionRemovalPlugin
+    : public llvm::orc::ObjectLinkingLayer::Plugin {
+public:
+  void modifyPassConfig(llvm::orc::MaterializationResponsibility &,
+                        llvm::jitlink::LinkGraph &graph,
+                        llvm::jitlink::PassConfiguration &config) override {
+    if (!graph.getTargetTriple().isOSBinFormatCOFF())
+      return;
+
+    // At the front, ahead of JITLink's own SEH pass, which ties each `.pdata`
+    // block to the code it describes with a keep alive edge. Running after it
+    // would leave those edges pointing at blocks that are no longer here.
+    config.PrePrunePasses.insert(
+        config.PrePrunePasses.begin(),
+        [](llvm::jitlink::LinkGraph &g) -> llvm::Error {
+          // `.xdata` goes too. It is only ever reached through `.pdata`, and it
+          // carries the same kind of image relative pointer to a handler.
+          for (StringRef name : {".pdata", ".xdata"})
+            if (llvm::jitlink::Section *section = g.findSectionByName(name))
+              g.removeSection(*section);
+          return llvm::Error::success();
+        });
+  }
+
+  llvm::Error
+  notifyFailed(llvm::orc::MaterializationResponsibility &) override {
+    return llvm::Error::success();
+  }
+
+  llvm::Error notifyRemovingResources(llvm::orc::JITDylib &,
+                                      llvm::orc::ResourceKey) override {
+    return llvm::Error::success();
+  }
+
+  void notifyTransferringResources(llvm::orc::JITDylib &,
+                                   llvm::orc::ResourceKey,
+                                   llvm::orc::ResourceKey) override {}
+};
+} // namespace
+
 M::ErrorOr<std::unique_ptr<ExecutionEngine>>
 ExecutionEngine::create(ExecutionEngineOptions options,
                         const llvm::TargetMachine &tm) {
@@ -218,6 +275,12 @@ ExecutionEngine::create(ExecutionEngineOptions options,
   // Construct the object linking layer; it takes ownership of the manager.
   ee->objectLayer = std::make_unique<llvm::orc::ObjectLinkingLayer>(
       *ee->executionSession, std::move(*managerOr));
+
+  // Before anything else gets a look at a Windows object, so that the unwind
+  // tables are gone by the time the passes that care about them run.
+  if (tt.isOSBinFormatCOFF())
+    ee->objectLayer->addPlugin(
+        std::make_unique<COFFUnwindSectionRemovalPlugin>());
 
   // Construct the platform stdlib - this way we don't have to worry about
   // whether or not we have it later on.
