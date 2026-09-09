@@ -1,0 +1,26 @@
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -144,7 +144,22 @@
+     Label("//llvm:is_aarch64_windows_clang_mingw"): native_arch_defines("AArch64", "aarch64-w64-windows-gnu"),
+     Label("//llvm:is_aarch64_windows_clang_cl"): native_arch_defines("AArch64", "aarch64-pc-windows-msvc"),
+     Label("//llvm:is_aarch64_windows_msvc"): native_arch_defines("AArch64", "aarch64-pc-windows-msvc"),
+-    Label("//llvm:is_x86_64_windows_clang_mingw"): native_arch_defines("X86", "x86_64-w64-windows-gnu"),
++    # The name of this arm says mingw, but the condition underneath it is just
++    # "Windows, and the compiler is clang", which is us. We are clang driving
++    # lld-link with --target=x86_64-pc-windows-msvc against a Microsoft sysroot,
++    # and the pair of triples this bakes in is the only thing in the whole build
++    # that says GNU.
++    #
++    # They are what the compiler falls back on when nothing on the command line
++    # names a target, which is the case for mojo run. The code it generates then
++    # asks for ___chkstk_ms and __main, which are libgcc and mingw entry points,
++    # and the JIT cannot resolve them because a Windows machine has no reason to
++    # have either one.
++    #
++    # Only the x86_64 arm is touched. The aarch64 one above has the same problem,
++    # but nothing here builds for that target, so there is no way to find out
++    # whether it is the only thing wrong with it.
++    Label("//llvm:is_x86_64_windows_clang_mingw"): native_arch_defines("X86", "x86_64-pc-windows-msvc"),
+     Label("//llvm:darwin_arm64"): native_arch_defines("AArch64", "arm64-apple-darwin"),
+     Label("//llvm:darwin_x86_64"): native_arch_defines("X86", "x86_64-unknown-darwin"),
+     Label("//llvm:linux_aarch64"): native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),

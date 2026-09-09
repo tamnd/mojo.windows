@@ -57,6 +57,7 @@ llvm_source = use_extension("//bazel/public-patches:llvm_source.bzl", "llvm_sour
 llvm_source.configure(extra_patches = [
     "//bazel/public-patches:llvm_windows_stack_flag.patch",
     "//bazel/public-patches:llvm_windows_absolute_symlinks.patch",
+    "//bazel/public-patches:llvm_windows_target_triple.patch",
 ])
 
 use_repo(llvm_source, "llvm-raw")
