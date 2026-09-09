@@ -110,10 +110,24 @@ SmallVector<std::string> MojoConfig::getPluginPaths() {
 // looks nothing like a Windows problem. `PlatformLibrary` already answered the
 // same question from the Bazel platform, so ask it instead of answering again.
 //
+// The directory is the same question asked twice. A DLL goes in `bin/` and a
+// shared object goes in `lib/`, because the Windows loader looks in the
+// directory the program started from and then along PATH and never in a
+// sibling directory, and there is no rpath to tell it otherwise. A DLL under
+// `lib/` is one this compiler can still load, since it hands the loader an
+// absolute path out of its own configuration, and one that a program `mojo
+// build` produced cannot, since all that program has is the name. Both copies
+// should be the same file.
+//
+// Asked of the name rather than of the host, so it stays one question with one
+// answer. The import libraries are not affected and stay in `lib/`: a linker
+// reads those at a path it is handed and does not go looking.
+//
 // `getPath` copies the string it is given into the config map before returning
 // a reference to it, so handing it a temporary is fine.
 static std::string sharedLibPath(StringRef stem) {
-  return "lib/" + PlatformLibrary::getSharedLibraryName(stem);
+  std::string name = PlatformLibrary::getSharedLibraryName(stem);
+  return (StringRef(name).ends_with(".dll") ? "bin/" : "lib/") + name;
 }
 
 StringRef MojoConfig::getLLDBPluginPath() {
