@@ -72,6 +72,15 @@ MojoConfig MojoConfig::fromContext(ContextRef ctx) {
 
 void MojoConfig::getParserImportPaths(SmallVectorImpl<StringRef> &paths) {
   StringRef importPaths = getValue(STRINGIFY_MOJO_CONFIG(".import_path"));
+  if (importPaths.empty()) {
+    // Everything else an install owns is a path under the package root with a
+    // default spelled out here, and the standard library was the one thing
+    // that had none, so it was the one thing an install had to be told about
+    // by hand. `lib/mojo` is where `std.mojoc` goes, next to the REPL entry
+    // point that is looked for the same way further down.
+    paths.push_back(getPath(STRINGIFY_MOJO_CONFIG(".import_path"), "lib/mojo"));
+    return;
+  }
   importPaths.split(paths, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
 }
 
