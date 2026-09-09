@@ -126,6 +126,8 @@ new	-	Mojo/test/mojo-tool/build/inputs/windows_shared_lib.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_cpu.mojo
 new	-	Mojo/test/mojo-tool/build/windows_target_link_line.mojo
 edit	72cae2136da1542c64670923232b36ffac55f6a5	Mojo/tools/mojo/Build/mojo-build.cpp
+edit	a90dd10aa4f027b00b72ca0f4eb3745646650293	Mojo/tools/mojo/Common/XlinkerResolution.cpp
+edit	8c252be4581b3b6111797e8c5e8ec56c4dcc14e3	Mojo/tools/mojo/Common/XlinkerResolution.h
 edit	dd482633af2ded4d888659d652a69d7b49fd8646	Mojo/tools/mojo/Debug/RPCClient.cpp
 edit	9958fb19c8e9b86a4636b088a591b381170417fe	Mojo/tools/mojo/DriverOptions.td
 edit	5d255ab6902dce344cf14557b281944cc289fce7	Mojo/tools/mojo/Precompile/mojo-precompile.cpp
