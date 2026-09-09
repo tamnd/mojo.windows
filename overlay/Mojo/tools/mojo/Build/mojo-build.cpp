@@ -1009,11 +1009,21 @@ static int linkOutput(OutputType outputType, const State &state,
   std::string wholeArchiveArg = "/WHOLEARCHIVE:" + archivePath;
   std::string outputArg = ("/out:" + outputName).str();
 
-  // Resolve the path to the CompilerRT library.
-  StringRef compilerRTPath = config.getCompilerRTPath();
+  // Resolve the path to the CompilerRT library. Targeting Windows that is the
+  // import library and not the DLL. A COFF linker takes the list of names a
+  // shared library defines from the .lib beside it, because a DLL does not
+  // carry that list in a form it can read, so naming the DLL stops the link
+  // with "bad file type. Did you specify a DLL instead of an import library?".
+  // The DLL is still the file that gets loaded; the import library only says
+  // which one to ask for. The same swap is already made in ObjectCompiler for
+  // the shared library path, so this is the last place that named the wrong
+  // file.
+  StringRef compilerRTPath = isWindows ? config.getCompilerRTImportLibraryPath()
+                                       : config.getCompilerRTPath();
 
   if (!std::filesystem::exists(compilerRTPath.str(), ec) || ec)
-    return state.reportError("unable to locate Mojo CompilerRT library");
+    return state.reportError("unable to locate Mojo CompilerRT library at '" +
+                             Twine(compilerRTPath) + "'");
 
   // Invoke the linker command.
   SmallVector<StringRef> linkerArgs = [&] {
