@@ -27,6 +27,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -290,6 +291,34 @@ StringRef Config::getValueOr(StringRef key, StringRef defaultValue) {
   return stringValue;
 }
 
+/// The directory an install is rooted at, worked out from where this executable
+/// is: `bin/mojo.exe` means the install is the directory above `bin`. Empty if
+/// the executable cannot be located.
+///
+/// This is the answer of last resort for a package root, used only once the
+/// config file, the environment and the runfiles have all had nothing to say.
+/// Those three cover an install that something wrote a `modular.cfg` for, a
+/// shell profile that exports the paths, and a Bazel build. A zip that somebody
+/// unpacked is none of them, and it is the normal way to get a program on
+/// Windows, so without this a downloaded install answers every path question
+/// with `/lib/...` and cannot find its own standard library.
+///
+/// The empty `argv0` is deliberate. `getMainExecutable` uses it only where it
+/// has no better source, which on Linux means `/proc` is not mounted and on
+/// Windows and macOS means never, and an empty string sends that fallback
+/// looking along PATH for a program with no name, which fails and returns
+/// nothing. Passing a null pointer there would dereference it.
+static StringRef getInstallRoot() {
+  static const std::string root = [] {
+    std::string exe = llvm::sys::fs::getMainExecutable("", nullptr);
+    if (exe.empty())
+      return std::string();
+    return llvm::sys::path::parent_path(llvm::sys::path::parent_path(exe))
+        .str();
+  }();
+  return root;
+}
+
 StringRef Config::getPath(StringRef key, StringRef relativePath) {
   const std::string keyStr{key.lower()};
   StringRef stringValue = getValue(keyStr);
@@ -298,6 +327,8 @@ StringRef Config::getPath(StringRef key, StringRef relativePath) {
 
   const auto [section, _] = key.split('.');
   StringRef packageRoot = getValue((section + ".package_root").str());
+  if (packageRoot.empty())
+    packageRoot = getInstallRoot();
   std::string &value = kv[keyStr];
   value = (packageRoot + "/" + relativePath).str();
   return value;
