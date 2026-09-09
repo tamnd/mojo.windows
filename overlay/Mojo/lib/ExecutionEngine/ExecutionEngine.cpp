@@ -34,6 +34,9 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 
+#include <stdio.h>
+#include <wchar.h>
+
 using namespace M;
 using namespace KGEN;
 
@@ -92,6 +95,58 @@ static ErrorOrSuccess setupPlatform(llvm::orc::JITDylib &platformStdlib,
                      library);
       platformStdlib.addGenerator(std::move(*systemGenerator));
     }
+
+    // Half of the printf and scanf family is not a function anywhere on a
+    // Windows machine. The UCRT headers declare those names inline over
+    // `__stdio_common_*`, so an ordinary program gets its own copy while it is
+    // being compiled and ucrtbase exports nothing to match. JIT'd code has no
+    // such moment and emits a plain call, which then has nothing to bind to.
+    //
+    // The other half does resolve, through ntdll, which carries its own copies
+    // from the old NT C runtime. Those are not the UCRT functions and they
+    // differ where it is easiest to notice, in floating point conversions, so
+    // that half is the worse one. Defining these names outright settles both
+    // cases, because a generator is only ever asked about a name the dylib does
+    // not already have.
+    //
+    // A Windows build of mojo links the UCRT statically, so the addresses below
+    // are our own copies, which are the ones that behave correctly. They are
+    // also the reason for the preprocessor check: these are names out of a
+    // Windows C library, and some of them are only spelled this way there.
+#ifdef _WIN32
+    llvm::orc::SymbolMap stdio;
+    auto defineStdio = [&](StringRef name, auto *function) {
+      stdio[session.intern(name)] = {
+          llvm::orc::ExecutorAddr::fromPtr(function),
+          llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable};
+    };
+    defineStdio("printf", &printf);
+    defineStdio("vprintf", &vprintf);
+    defineStdio("fprintf", &fprintf);
+    defineStdio("vfprintf", &vfprintf);
+    defineStdio("sprintf", &sprintf);
+    defineStdio("vsprintf", &vsprintf);
+    defineStdio("snprintf", &snprintf);
+    defineStdio("vsnprintf", &vsnprintf);
+    defineStdio("scanf", &scanf);
+    defineStdio("fscanf", &fscanf);
+    defineStdio("sscanf", &sscanf);
+    defineStdio("_snprintf", &_snprintf);
+    defineStdio("_vsnprintf", &_vsnprintf);
+    // The two wide ones need spelling out. In C++ the UCRT headers give them a
+    // template overload that deduces the size of an array argument, so the bare
+    // name is an overload set rather than one address.
+    defineStdio("swprintf",
+                static_cast<int (*)(wchar_t *, size_t, const wchar_t *, ...)>(
+                    &swprintf));
+    defineStdio("vswprintf",
+                static_cast<int (*)(wchar_t *, size_t, const wchar_t *,
+                                    va_list)>(&vswprintf));
+    if (auto errOr = toModularErrorOr(platformStdlib.define(
+            llvm::orc::absoluteSymbols(std::move(stdio))));
+        failed(errOr))
+      return errOr.takeError();
+#endif
   }
 
   return success();
